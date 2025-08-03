@@ -31,14 +31,16 @@ def log(msg):
     sys.stdout.flush()
 
 def chat(prompt, max_tokens=TOKENS):
-    return client.chat.completions.create(
+    resp = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": "You are an extreme-left investigative reporter."},
-            {"role": "user",   "content": prompt},
+            {"role": "system",
+             "content": "You are an extreme-left investigative reporter."},
+            {"role": "user", "content": prompt},
         ],
         max_tokens=max_tokens
-    ).choices[0].message.content.strip()
+    )
+    return resp.choices[0].message.content.strip()
 
 def story(topic):
     url = chat(f"Return ONLY one reputable news URL (<3h old) about {topic}.")
@@ -46,7 +48,7 @@ def story(topic):
         f"Read {url}. Write an ~800-word article in a punchy extreme-left tone. "
         "Insert up to 3 image markers like <<<IMG:description>>> where photos belong."
     )
-    parts   = re.split(r'<<<IMG:.*?>>>', text)
+    parts = re.split(r'<<<IMG:.*?>>>', text)
     prompts = re.findall(r'<<<IMG:(.*?)>>>', text)[:3]
     return " ".join(parts), prompts
 
@@ -60,13 +62,13 @@ def grab_img(query):
         if resp.status_code == 200:
             data = resp.json()
             path = f"assets/{data['id']}.jpg"
-            img_data = requests.get(data["urls"]["regular"]).content
+            img_bytes = requests.get(data["urls"]["regular"]).content
             with open(path, "wb") as f:
-                f.write(img_data)
+                f.write(img_bytes)
             log(f"✓ Unsplash image for '{query}'")
             return path
-        log(f"Unsplash {attempt}/3 failed ({resp.status_code}) for '{query}'")
-    log(f"⚠️ Using fallback for '{query}'")
+        log(f"Unsplash attempt {attempt}/3 failed ({resp.status_code}) for '{query}'")
+    log(f"⚠️ Using fallback image for '{query}'")
     path = "assets/fallback.jpg"
     if not os.path.exists(path):
         with open(path, "wb") as f:
@@ -114,7 +116,7 @@ def main():
     update_index(slides)
     log("↻ Updated slides in index.html")
 
-    # Stage changes; the workflow action will commit & push them
+    # Stage changes; workflow will commit & push
     repo = Repo(".")
     repo.git.add(all=True)
 
