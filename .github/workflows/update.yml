@@ -1,9 +1,13 @@
 name: Auto-refresh
 
 on:
+  workflow_dispatch:          # manual trigger button
   schedule:
-    - cron: "0 */3 * * *"   # every 3 hours UTC
-  workflow_dispatch:
+    - cron: "0 */3 * * *"     # every 3 h (00,03,06… UTC)
+
+# NEW: allow the workflow to push commits back to the repo
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -11,15 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      - name: Install deps
+        run: pip install -r requirements.txt
 
-      - env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          UNSPLASH_KEY:   ${{ secrets.UNSPLASH_KEY }}
+      - name: Run python generator.py
         run: python generator.py
-
-      - uses: stefanzweifel/git-auto-commit-action@v5
-        with: { commit_message: "auto: refresh headlines" }
