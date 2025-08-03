@@ -1,0 +1,4 @@
+openai>=1.14
+jinja2
+requests
+gitpython

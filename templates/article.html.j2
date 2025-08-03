@@ -1,0 +1,20 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ body.split('\n')[0][:70] }} – The Search 433</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <nav><a href="../index.html" style="color:#7cf">← Home</a></nav>
+
+  <article style="padding:20px; max-width:900px; margin:auto;">
+    <h1>{{ body.split('\n')[0] }}</h1>
+
+    {% for img in imgs %}
+      <img src="../{{ img }}" style="width:100%; margin:20px 0; border-radius:4px">
+    {% endfor %}
+
+    <p style="white-space:pre-wrap; line-height:1.6">{{ body }}</p>
+    <small>Updated {{ updated.strftime('%Y-%m-%d %H:%M UTC') }}</small>
+  </article>
+</body></html>
