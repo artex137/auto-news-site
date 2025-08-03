@@ -1,31 +1,40 @@
 // slider.js
 
-// Grab all the pieces
-const slider    = document.getElementById('slides');
-const prevBtn   = document.getElementById('prev');
-const nextBtn   = document.getElementById('next');
-const slides    = Array.from(document.querySelectorAll('.slide'));
-let current     = 0;
+const slidesContainer = document.getElementById('slides');
+const slides = Array.from(document.querySelectorAll('.slide'));
+const prevButton = document.getElementById('prev');
+const nextButton = document.getElementById('next');
+let currentIndex = 0;
 
-// Apply the basic flex setup so each .slide sits side-by-side
-slider.style.display    = 'flex';
-slider.style.overflow   = 'hidden';            // hide the offscreen slides
-slider.style.transition = 'transform 0.5s ease';
-
-// Make each slide full width
-slides.forEach(s => {
-  s.style.flex = '0 0 100%';
-});
-
-// Helper to show the slide at index “i”
-function show(i) {
-  current = (i + slides.length) % slides.length;
-  slider.style.transform = `translateX(-${current * 100}%)`;
+// Move to the given slide index
+function update() {
+  slidesContainer.style.transition = 'transform 0.5s ease';
+  slidesContainer.style.transform = `translateX(-${currentIndex * 100}%)`;
 }
 
-// Wire up the buttons
-prevBtn.addEventListener('click', () => show(current - 1));
-nextBtn.addEventListener('click', () => show(current + 1));
+// Advance to next slide
+function showNext() {
+  currentIndex = (currentIndex + 1) % slides.length;
+  update();
+}
 
-// Kick it off at slide 0
-show(0);
+// Go back to previous slide
+function showPrev() {
+  currentIndex = (currentIndex - 1 + slides.length) % slides.length;
+  update();
+}
+
+// Wire up buttons
+nextButton.addEventListener('click', showNext);
+prevButton.addEventListener('click', showPrev);
+
+// Auto-advance every 30 seconds
+setInterval(showNext, 30000);
+
+// Initial setup: make container a flex strip
+slidesContainer.style.display = 'flex';
+slidesContainer.style.overflow = 'hidden';
+slides.forEach(s => s.style.flex = '0 0 100%');
+
+// Show first slide on load
+update();
