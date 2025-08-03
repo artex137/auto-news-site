@@ -4,23 +4,22 @@ from openai import OpenAI
 from jinja2 import Template
 from git import Repo
 
-# ────────────── CONFIG ──────────────
+# ───────────── CONFIG ─────────────
 INTERESTS    = [
     "AI ethics", "cryptocurrency", "UFO disclosure",
     "telluric currents", "cosmic ray precognition"
 ]
 ARTICLES     = 4
-MODEL        = "gpt-4o-mini"        # change to "gpt-4o" if you want higher quality
-TOKENS       = 900                  # max tokens per response
+MODEL        = "gpt-4o-mini"     # or "gpt-4o" for higher quality
+TOKENS       = 900
 OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
 UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
-# ─────────────────────────────────────
+# ──────────────────────────────────
 
 client = OpenAI(api_key=OPENAI_KEY)
 
-# ─── helper: call GPT ──────────────────────────────────────────────────────────
+# ─── GPT call helper ───────────────────────────────────────────────────────────
 def chat(prompt: str, max_tokens: int = TOKENS) -> str:
-    """Single-shot GPT call with our system prompt."""
     return client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -31,20 +30,18 @@ def chat(prompt: str, max_tokens: int = TOKENS) -> str:
         max_tokens=max_tokens
     ).choices[0].message.content.strip()
 
-# ─── helper: build one story ───────────────────────────────────────────────────
+# ─── Build one story ───────────────────────────────────────────────────────────
 def story(topic: str):
-    """Return (article_text, list_of_image_prompts)."""
-    url   = chat(f"Return ONLY one reputable news URL (<3h old) about {topic}.")
-    text  = chat(
-        f"Read {url}. Compose an ~800-word article in a punchy, extreme-left tone. "
+    url  = chat(f"Return ONLY one reputable news URL (<3h old) about {topic}.")
+    text = chat(
+        f"Read {url}. Write an ~800-word article in a punchy extreme-left tone. "
         "Insert up to 3 image markers like <<<IMG:description>>> where photos belong."
     )
-
     body_parts = re.split(r'<<<IMG:.*?>>>', text)
     prompts    = re.findall(r'<<<IMG:(.*?)>>>', text)[:3]
     return " ".join(body_parts), prompts
 
-# ─── helper: fetch Unsplash photo ──────────────────────────────────────────────
+# ─── Fetch Unsplash photo ──────────────────────────────────────────────────────
 def grab_img(query: str) -> str:
     r = requests.get(
         "https://api.unsplash.com/photos/random",
@@ -56,9 +53,9 @@ def grab_img(query: str) -> str:
         f.write(requests.get(r["urls"]["regular"]).content)
     return path
 
-# ─── helper: render article HTML ───────────────────────────────────────────────
+# ─── Render article HTML ───────────────────────────────────────────────────────
 def render_article(body: str, imgs: list[str], slug: str):
-    with open("templates/article.html.j2", encoding="utf-8") as f:   # UTF-8 force
+    with open("templates/article.html.j2", encoding="utf-8") as f:
         template = Template(f.read())
 
     html = template.render(
@@ -66,11 +63,10 @@ def render_article(body: str, imgs: list[str], slug: str):
         imgs   = imgs,
         updated= datetime.now(timezone.utc)
     )
-
     with open(f"articles/{slug}", "w", encoding="utf-8") as f:
         f.write(html)
 
-# ─── helper: inject slides into index.html ─────────────────────────────────────
+# ─── Replace slides in index.html ──────────────────────────────────────────────
 def update_index(slides_html: str):
     with open("index.html", "r+", encoding="utf-8") as f:
         content = f.read()
@@ -78,10 +74,10 @@ def update_index(slides_html: str):
         new     = parts[0] + "<!--SLIDES-->\n" + slides_html + "\n<!--SLIDES-->" + parts[2]
         f.seek(0); f.write(new); f.truncate()
 
-# ─── main pipeline ─────────────────────────────────────────────────────────────
+# ─── Main process ──────────────────────────────────────────────────────────────
 def main():
     if not OPENAI_KEY or not UNSPLASH_KEY:
-        raise RuntimeError("Missing OPENAI_API_KEY or UNSPLASH_KEY environment variables")
+        raise RuntimeError("Missing OPENAI_API_KEY or UNSPLASH_KEY.")
 
     slides = ""
     for n in range(1, ARTICLES + 1):
@@ -100,13 +96,14 @@ def main():
 
     update_index(slides)
 
-    # auto-commit if there are changes
+    # ── Commit changes; push ONLY when running on your laptop ────────────────
     repo = Repo(".")
     repo.git.add(all=True)
     if repo.is_dirty():
         repo.index.commit("auto: refresh headlines")
-        repo.remote().push()
+        if not os.getenv("GITHUB_ACTIONS"):     # skip push inside GitHub Actions
+            repo.remote().push()
 
-# ─── run ───────────────────────────────────────────────────────────────────────
+# ─── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
