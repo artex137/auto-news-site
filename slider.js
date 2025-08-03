@@ -1,33 +1,48 @@
 // slider.js
 
-const slidesContainer = document.getElementById('slides');
-const slides = Array.from(document.querySelectorAll('.slide'));
-const prevButton = document.getElementById('prev');
-const nextButton = document.getElementById('next');
-let currentIndex = 0;
+const sliderSection    = document.getElementById('slider');
+const slidesContainer  = document.getElementById('slides');
+const slides           = document.querySelectorAll('.slide');
+const prevBtn          = document.getElementById('prev');
+const nextBtn          = document.getElementById('next');
+let currentIndex       = 0;
 
-function update() {
-  slidesContainer.style.transform = `translateX(-${currentIndex * 100}%)`;
+// Ensure slides line up in a row
+slidesContainer.style.display    = 'flex';
+slidesContainer.style.transition = 'transform 0.5s ease';
+
+// Make each slide exactly the width of the slider section
+function sizeSlides() {
+  const w = sliderSection.clientWidth + 'px';
+  slides.forEach(s => {
+    s.style.minWidth = w;
+    s.style.maxWidth = w;
+  });
+}
+window.addEventListener('resize', sizeSlides);
+sizeSlides();
+
+// Shift to the slide at `currentIndex`
+function showSlide(idx) {
+  const offset = sliderSection.clientWidth * idx;
+  slidesContainer.style.transform = `translateX(-${offset}px)`;
 }
 
-function showNext() {
-  currentIndex = (currentIndex + 1) % slides.length;
-  update();
-}
-
-function showPrev() {
+// Next / previous handlers
+prevBtn.onclick = () => {
   currentIndex = (currentIndex - 1 + slides.length) % slides.length;
-  update();
-}
+  showSlide(currentIndex);
+};
+nextBtn.onclick = () => {
+  currentIndex = (currentIndex + 1) % slides.length;
+  showSlide(currentIndex);
+};
 
-nextButton.addEventListener('click', showNext);
-prevButton.addEventListener('click', showPrev);
+// Auto-advance every 30s
+setInterval(() => {
+  currentIndex = (currentIndex + 1) % slides.length;
+  showSlide(currentIndex);
+}, 30000);
 
-// Auto-advance every 30 seconds
-setInterval(showNext, 30000);
-
-// Initial setup
-slidesContainer.style.display = 'flex';
-slidesContainer.style.overflow = 'hidden';
-slides.forEach(s => s.style.flex = '0 0 100%');
-update();
+// Start on slide 0
+showSlide(0);
