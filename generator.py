@@ -83,13 +83,7 @@ def main():
             f'<h2>{headline}</h2></a>\n'
         )
 
-    update_index(slides)
-
-    # Commit locally; the workflow step pushes
-    repo = Repo(".")
-    repo.git.add(all=True)
-    if repo.is_dirty():
-        repo.index.commit("auto: refresh headlines")
+   update_index(slides)
 
 if __name__ == "__main__":
     main()
