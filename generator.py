@@ -85,7 +85,7 @@ def main():
 
     update_index(slides)
 
-    # Commit locally; the workflow step will push
+    # Commit locally; the workflow step pushes
     repo = Repo(".")
     repo.git.add(all=True)
     if repo.is_dirty():
