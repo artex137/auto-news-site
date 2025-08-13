@@ -1,38 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>The Search 433</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>The Search 433 — Fresh Signals</title>
+  <meta name="description" content="Ultra-clean, mobile-first automated news. Updated frequently.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="slider.js"></script>
 </head>
-<body>
-  <nav>
-    <h1>The Search 433</h1>
-    <!-- placeholder buttons -->
-  </nav>
-
-  <section id="slider">
-    <div id="slides">
-      <!--SLIDES-->
-<a class="slide" href="articles/article1.html" style="background-image:url('assets/abYwilpzFcY.jpg')"><h2>**UFO Disclosures: Are We Finally Ready to Confront the Truth?**
-
-In a world where corporate media is often used to obsc</h2></a>
-<a class="slide" href="articles/article2.html" style="background-image:url('assets/FBOX3CFEcRI.jpg')"><h2>**The Hidden Dangers of Capitalism: Understanding Telluric Currents and the Need for Radical Change**
-
-In the modern wor</h2></a>
-<a class="slide" href="articles/article3.html" style="background-image:url('assets/F6d5xePfR08.jpg')"><h2>### The Shocking Truth About Telluric Currents: Nature’s Hidden Power or Corporate Conspiracy?
-
-In the world of science,</h2></a>
-<a class="slide" href="articles/article4.html" style="background-image:url('assets/ac6UGoeSUSE.jpg')"><h2>### Cosmic Ray Precognition: The Science and the Struggle Against Corporate Obfuscation 
-
-In a world rife with misinform</h2></a>
-
-<!--SLIDES-->
+<body class="bg">
+  <header class="site-header">
+    <div class="container row between middle">
+      <a class="brand" href="/">
+        <span class="brand-dot"></span>
+        <span class="brand-text">The Search <strong>433</strong></span>
+      </a>
+      <nav class="nav">
+        <a href="/" class="nav-link active">Home</a>
+        <a href="#latest" class="nav-link">Latest</a>
+        <a href="#about" class="nav-link">About</a>
+      </nav>
     </div>
-    <button id="prev">‹</button>
-    <button id="next">›</button>
+  </header>
+
+  <!-- HERO / SLIDER -->
+  <section class="hero">
+    <div class="container">
+      <div class="slider" data-autoplay="7000">
+        <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
+        <div class="slides">
+          <!--SLIDES-->
+          <!-- The generator.py will inject <a class="slide">…</a> items here -->
+          <!--/SLIDES-->
+        </div>
+        <button class="slider-btn next" aria-label="Next">&#10095;</button>
+        <div class="dots" aria-hidden="true"></div>
+      </div>
+    </div>
   </section>
 
-  <script src="slider.js"></script>
+  <!-- LATEST GRID -->
+  <main id="latest" class="section">
+    <div class="container">
+      <h2 class="section-title">Latest stories</h2>
+      <p class="section-kicker">Fresh copy from our millennial non‑normie reporter, Airyan Fawking.</p>
+      <div class="cards">
+        <!--CARDS-->
+        <!-- Optional: you can have generator also inject a 4-card grid here later -->
+        <!--/CARDS-->
+      </div>
+    </div>
+  </main>
+
+  <section id="about" class="section section-alt">
+    <div class="container prose">
+      <h3>About</h3>
+      <p>
+        The Search 433 is a fully automated, ultra-clean news experience. Stories are reported in a straight
+        newspaper style by our consistent voice—<strong>Airyan Fawking</strong>—and refreshed on a tight cadence.
+      </p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>&copy; <span id="y"></span> The Search 433</p>
+      <p>Updated automatically. Not investment or legal advice.</p>
+    </div>
+    <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+  </footer>
 </body>
 </html>
