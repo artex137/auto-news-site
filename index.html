@@ -26,21 +26,19 @@
   </script>
 </head>
 <body class="theme-darkblue">
-  <!-- Top bar -->
   <header class="site-header">
     <div class="container row between middle">
-      <!-- New SVG logo -->
       <a class="brand" href="index.html" aria-label="Search 433">
-        <svg width="140" height="36" viewBox="0 0 140 36" aria-hidden="true" class="logo-svg">
+        <svg class="logo-svg" viewBox="0 0 160 40" width="160" height="40" aria-hidden="true">
           <defs>
             <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stop-color="#7fb2ff"/>
               <stop offset="100%" stop-color="#2f6fff"/>
             </linearGradient>
           </defs>
-          <rect x="0" y="0" rx="10" ry="10" width="44" height="36" fill="url(#g433)"></rect>
-          <text x="22" y="24" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
-          <text x="52" y="24" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
+          <rect x="0" y="0" rx="10" ry="10" width="52" height="40" fill="url(#g433)"></rect>
+          <text x="26" y="26" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
+          <text x="64" y="26" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
         </svg>
       </a>
       <nav class="nav">
@@ -50,39 +48,36 @@
     </div>
   </header>
 
-  <!-- Primary grid -->
   <section class="frontgrid">
     <div class="container grid-outer">
-      <!-- Main well (slider + ticker + latest cards) -->
       <div class="grid-main">
-        <!-- Slider -->
         <div class="slider card" data-autoplay="7000">
           <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
           <div class="slides">
             <!--SLIDES-->
-<a class="slide" href="articles/skepticism-surrounds-claims-of-alien-life-amid-scientific-in.html" style="background-image:url('assets/skepticism-surrounds-claims-of-alien-life-amid-scientific-in.jpg')"><div class="slide-content"><div class='kicker'>Top Story</div><h2 class="slide-headline">Skepticism Surrounds Claims of Alien Life Amid Scientific Inquiry</h2></div></a>
-<a class="slide" href="articles/israel-and-hamas-agree-to-extend-ceasefire-amid-ongoing-tens.html" style="background-image:url('assets/israel-and-hamas-agree-to-extend-ceasefire-amid-ongoing-tens.jpg')"><div class="slide-content"><div class='kicker'>Top Story</div><h2 class="slide-headline">Israel and Hamas Agree to Extend Ceasefire Amid Ongoing Tensions</h2></div></a>
-<a class="slide" href="articles/us-government-releases-comprehensive-ufo-report-amid-growing.html" style="background-image:url('assets/us-government-releases-comprehensive-ufo-report-amid-growing.jpg')"><div class="slide-content"><div class='kicker'>Top Story</div><h2 class="slide-headline">U.S. Government Releases Comprehensive UFO Report Amid Growing Public Interest</h2></div></a>
-<a class="slide" href="articles/joe-rogans-podcast-faces-criticism-amid-spotify-controversie.html" style="background-image:url('assets/joe-rogans-podcast-faces-criticism-amid-spotify-controversie.jpg')"><div class="slide-content"><div class='kicker'>Top Story</div><h2 class="slide-headline">Joe Rogan's Podcast Faces Criticism Amid Spotify Controversies</h2></div></a>
-<!--/SLIDES-->
+            <a class="slide" href="articles/index.html" style="background-image:url('assets/fallback-hero.jpg')">
+              <div class="slide-content">
+                <div class="kicker">Top Story</div>
+                <h2 class="slide-headline">Welcome to Search 433 — live headlines with a permanent archive.</h2>
+              </div>
+            </a>
+            <!--/SLIDES-->
           </div>
           <button class="slider-btn next" aria-label="Next">&#10095;</button>
           <div class="dots" aria-hidden="true"></div>
         </div>
 
-        <!-- Ticker (moved directly under the slider) -->
         <section class="ticker">
           <div class="ticker-inner card">
             <span class="tick-label">LIVE</span>
             <marquee behavior="scroll" direction="left" scrollamount="6">
               <!--TICKER-->
-Senate Republican wants to hold hearings on a 9/11 conspiracy theory - Politico · Ron Johnson wants a hearing on 'what actually happened on 9/11' - NBC News · False flags: How to set up a fake ship register and get away with it - Lloyd's List · Everything Is a ‘False Flag’ Now - WIRED · Yes, the ‘Alien’ timeline is confusing. Before you dig into the franchise’s first TV series, here’s some clarity - CNN · 'Alien: Earth': What's the difference between cyborgs, synths, and hybrids? - Mashable · 3I/ATLAS Is Very Actively Releasing Water - Universe Today · NASA Shares New Details About Interstellar Comet 3I/ATLAS That's Hurtling Towards Earth - NDTV · Luis Elizondo breaks down Tulsi Gabbard UFO comments - NewsNation · British man playing fetch with dog accidentally records possible UFO zooming through air: video - New York Post · Joe Rogan Calls Out Government—'Completely Failed Us' - Newsweek · Joe Rogan podcast interrupted by adorable intruder - MSN
-<!--/TICKER-->
+              Loading latest headlines…
+              <!--/TICKER-->
             </marquee>
           </div>
         </section>
 
-        <!-- Latest cards (archive CTA) -->
         <div class="cards mt-16">
           <a class="card" href="articles/index.html">
             <div class="card-media" style="background-image:url('assets/fallback-card.jpg')"></div>
@@ -94,26 +89,24 @@ Senate Republican wants to hold hearings on a 9/11 conspiracy theory - Politico 
         </div>
       </div>
 
-      <!-- Right rail -->
       <aside class="grid-rail">
         <div class="rail-block card">
           <div class="rail-title">Now</div>
           <div id="clock" class="rail-now">—:—</div>
+          <div class="rail-title" style="border-top:1px solid var(--line)">Toronto Weather</div>
+          <div class="rail-now">
+            <!--WEATHER-->
+            Fetching weather…
+            <!--/WEATHER-->
+          </div>
         </div>
 
         <div class="rail-block card">
           <div class="rail-title">Trending Now</div>
           <ul class="rail-list">
             <!--TRENDING-->
-<li><a href="https://news.google.com/rss/articles/CBMikAFBVV95cUxNZTEtdFZiNWE2dTlMekZ1VXVUaHJaUUFNcUp0WTF6RHdXMjBGSjRBWmtSRUxfUk96ZUZsd3E1VDRrOEc1VEpMdDhpSDZqVlo4VFVPSnNqRGNxOWppUzJRTEZHNDdXOUFxUjM1UjdPcXVTWG5lUTRUaVFYZTdhazNNS3R2QmdNQlUyOFI3UzFRZHc?oc=5" target="_blank" rel="noopener">Photos: Scenes from D.C. as National Guard joins Trump's law enforcement crackdown - Axios</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMijwFBVV95cUxQdE04V080MVFWeVJMd1RPR25uMUNGeEZqS2JBYjZrTEVVU0ZWZkR1bi10dFd0VGJxYTdYOGlld2k1T1d4elVEMEhlMC1jb1poN05kOGJtTjctbWRvYjBBcmVxMGo4clBIQ09ocnFzWklQZGtIWlA2eWZhRHp4c1NwSkpQU25ZLTZ3SWxjNEdKWQ?oc=5" target="_blank" rel="noopener">Trump is talking to European leaders about his Putin meeting. They may still not get a say. - Politico</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMioAFBVV95cUxOb3RGVWtSbmVIbnV1X3JKb01MWDM2VUZpSllsOExwWGpvNHVpaFg0ajNkU1NYTEdHUGw2TnZyZFBqWmF5ZHZ3V3FUSW1NWUxyZnRUM1JfQ05XR1BRa2JzOFF3cUVIWmw1bVA0NDNtemtybkVYVG1NZk5FdDZFbkdsZkxCa2U5X0FrN3AzdDQzQUM1NE9SYTk3UUVfYnFTM2Vq?oc=5" target="_blank" rel="noopener">White House announces more aggressive review of Smithsonian museums - The Washington Post</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMijAFBVV95cUxOLWM0cGJ0cnhZQ3NiM1NvUEwwU1lYNTN0dkdsXzltMnZGY3pwVDhhR0JVaEtPc0x5bXlfQjh1blp4SW9BNWNpVkVIeDZzcmxFRXk1MXY0emZSYmFsRFVRNmNFU2FfNE5kSTNXZHJwTHhKMTdJdWwxRFRCTVlnY3REUHBJWGdlUEo2b3BXSg?oc=5" target="_blank" rel="noopener">Trump administration must restore hundreds of UCLA research grants, federal judge rules - Los Angeles Times</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMiswFBVV95cUxQMGJLYzQwYkF6d2JpYWp0R0RIeDM5VEZpMDVnWTVyRGZibWZ4SmNDdGNwMW55SmF4NF91Ym00dG9FT3RZSW9EeUdkZVE0djFyNUVKT0FOMGZTeUt5a3FRWDVZZF9xaENTdU9taktKcnhQeVZmUTMxdW8yd1lKTk1LSDRVcGh0Znl0bkp2R1RTbXRPV01KcWlLa0Y3bU0zcEhxdHB1T1VVTUowT09mb1VwQW1URQ?oc=5" target="_blank" rel="noopener">Mexico transfers 26 cartel figures wanted by US authorities in deal with Trump administration - AP News</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMipwFBVV95cUxQZXlWS3A3dUJpT29kclBTMUMwd3dIT3R6TzhMUzExTDcwNmVXT2JDV0hqTVg5QU42ZnBOZ3c1U1FJRk12NHhTS2dmOU1kS0FwenRwMWdsNFJWZlQxSFFpcFFqdE9LYTNxbV9IekxROWh3SUtTQmxSRFR4bE9zYkE0cWE3VDRtcENTUXBBUW9iUG1wTmtsbFhaRGwtT1kzVm04NTBqRzNjY9IBrAFBVV95cUxQN1BheTJ3S2w4dlczV3BjMVRMVTctSng2YVVSdDNxVTNRcC1RVzFYQWVJcDVYb3JIOWk3VWJwcndZOW0wZmstaW43bDRPQ2NXc3BKWkRkdGhRQWhPTnJSTkRqSmtQUnJGUi1WZ0FFUTh5SjlfMmVTREsxenh2SWI2b182QkVGZ3dUd1hiSDR6NFdoUk1RM1ZzZzFiamh2aXN6Vmgxa01pMlhRcVlu?oc=5" target="_blank" rel="noopener">Train carrying possible hazardous materials derails in Palo Pinto, Texas: Officials - ABC News</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMiqAFBVV95cUxNY2NUdUF6Ylp4YjRLaFZZazZwbm5FaTBPekltaUJYdUVXb0xQRFltNmR3MGt4NGRNSXRxY3FqTWFBMGs2Z1J0d0VLeTNYTkZOWnhDSkhvS2lRQXVFQmVXTWdrelRkSFJoR0xUTmwtalFnTzVZZmVIR0xoRDc1bzFLQUpxdUFtMFJSWlVMWjFJajBoZ0FVWmV5ai1GNjdfZzA5MHphMHUwSnDSAa4BQVVfeXFMT1g5V3BsUmxaN1p3TnRNSWpJQmVVdEZVclVSTkM1bVdreWVMRUZSRDBqd3J3Y2p0MmpVbHNXTmJTYzRTdkkzNmdVZ19vOUZBejZjcFI2VzJ1N2Q2QzdQTEdLa0c4bGdpS0JHajk0Y2NTRkRpM0YwT29TeXRiakZkX0tWTV9wUXl3cU1Ma19hdEZDUGlOZzVoTXdOSWNJOHQzMUVkTFU2YnByb1NkcVJR?oc=5" target="_blank" rel="noopener">After the shooting at CDC, RFK Jr. criticizes agency’s pandemic response - PBS</a></li>
-<li><a href="https://news.google.com/rss/articles/CBMiiwFBVV95cUxQTnVuNXV2eG95VDdtVmFRaFd0ZnhtelF5VllURzk2QTBUOEllYkhxZnlfQkltT2g3c3VBa21PMFFnS2FxcGkwOG8xVms3Y1JPclh1cnZNY2h6VXFHVENLV1hBOG05anJTOERWTk5oOW5MSlc4NjNzQmlvV0VnMHBSUVZNTWt3ZE5BUnIw?oc=5" target="_blank" rel="noopener">Hack of federal court filing system exploited security flaws known since 2020 - Politico</a></li>
-<!--/TRENDING-->
+            <li>Loading…</li>
+            <!--/TRENDING-->
           </ul>
         </div>
 
@@ -121,17 +114,8 @@ Senate Republican wants to hold hearings on a 9/11 conspiracy theory - Politico 
           <div class="rail-title">Latest Headlines</div>
           <ul class="rail-list">
             <!--HEADLINES-->
-<li><a href="articles/skepticism-surrounds-claims-of-alien-life-amid-scientific-in.html">Skepticism Surrounds Claims of Alien Life Amid Scientific Inquiry</a></li>
-<li><a href="articles/israel-and-hamas-agree-to-extend-ceasefire-amid-ongoing-tens.html">Israel and Hamas Agree to Extend Ceasefire Amid Ongoing Tensions</a></li>
-<li><a href="articles/us-government-releases-comprehensive-ufo-report-amid-growing.html">U.S. Government Releases Comprehensive UFO Report Amid Growing Public Interest</a></li>
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotify-controversie.html">Joe Rogan's Podcast Faces Criticism Amid Spotify Controversies</a></li>
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotifys-content-pol.html">Joe Rogan's Podcast Faces Criticism Amid Spotify's Content Policies</a></li>
-<li><a href="articles/us-government-releases-new-report-on-unidentified-aerial-phe.html">US Government Releases New Report on Unidentified Aerial Phenomena</a></li>
-<li><a href="articles/trump-appeals-new-york-judges-ruling-in-ongoing-fraud-case.html">Trump Appeals New York Judge's Ruling in Ongoing Fraud Case</a></li>
-<li><a href="articles/israel-hamas-conflict-escalates-amid-international-calls-for.html">Israel-Hamas Conflict Escalates Amid International Calls for Ceasefire</a></li>
-<li><a href="articles/us-ufo-report-2023-government-confirms-over-500-unidentified.html">US UFO Report 2023: Government Confirms Over 500 Unidentified Aerial Phenomena</a></li>
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotify-controversie.html">Joe Rogan's Podcast Faces Criticism Amid Spotify Controversies</a></li>
-<!--/HEADLINES-->
+            <li><a href="articles/index.html">Archive — see all stories →</a></li>
+            <!--/HEADLINES-->
           </ul>
         </div>
       </aside>
