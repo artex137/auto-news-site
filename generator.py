@@ -1,4 +1,4 @@
-import os, re, json, random, datetime, pathlib, unicodedata
+import os, re, json, random, datetime, pathlib, unicodedata, hashlib, urllib.parse, xml.etree.ElementTree as ET
 from typing import List, Dict, Optional
 import requests
 from openai import OpenAI
@@ -19,7 +19,7 @@ ARTICLE_TPL = TPL_DIR / "article.html.j2"
 ARCHIVE_TPL = TPL_DIR / "articles_index.html.j2"
 INDEX = BASE / "index.html"
 
-# Topics (your new list)
+# Topics (your list)
 INTERESTS = [
     "911 theories",
     "false flags",
@@ -32,23 +32,30 @@ INTERESTS = [
 
 NUM_ARTICLES = 4
 SLIDER_LATEST = 4
-HEADLINES_COUNT = 8
+HEADLINES_COUNT = 10
+TRENDING_COUNT = 8
+TICKER_COUNT = 12
 FALLBACK = "assets/fallback-hero.jpg"
 
-SYSTEM_STYLE = """Write in straight newspaper style (inverted pyramid). Neutral tone, clear sourcing, quotes with attribution.
-Return JSON with: "title", "meta_description", "body_html", "image_queries" (2-3 concise)."""
+SYSTEM_STYLE = """You are a straight-news reporter. Write ~800 words (±10%) in newspaper style using the inverted pyramid:
+lede (who/what/when/where/why/how) → nut graf → key facts with quotes & attributions → context → forward-looking kicker.
+Neutral tone; AP-adjacent; modern vocabulary without slang. Attribute all claims to sources.
 
-URL_FINDER = """Return exactly one reputable, working news URL (no paywall if possible) less than 6 hours old
+Return a JSON object with:
+"title" (<= 90 chars),
+"meta_description" (140–160 chars),
+"body_html" (HTML only: <p>, <h2>, <ul>, <li>, <blockquote> for quotes),
+"image_queries" (2–3 short phrases for related photos).
+"""
+
+URL_FINDER = """Return exactly one reputable, working news URL (no hard paywall if possible), published within the last 24 hours,
 about the provided topic. Respond with ONLY the URL."""
 
-ARTICLE_PROMPT = """Write an article per the system style based on:
+ARTICLE_PROMPT = """Write the article described in the system message based strictly on this source URL:
 {url}
 
-Return JSON:
-- "title": headline (<= 90 chars)
-- "meta_description": 140–160 chars
-- "body_html": HTML body with <p>, <h2>, <blockquote> (no <html>/<body> wrappers)
-- "image_queries": 2–3 short phrases for related photos"""
+Remember: ~800 words, with proper attributions and dates. Output JSON only as specified.
+"""
 
 # ===== Helpers =====
 def slugify(value: str, max_len: int = 60) -> str:
@@ -57,12 +64,16 @@ def slugify(value: str, max_len: int = 60) -> str:
     value = re.sub(r'[\s_-]+', '-', value)
     return value[:max_len].strip('-') or "article"
 
+def fingerprint(url: str, title: str) -> str:
+    norm = (url or "").strip().lower() + "|" + (title or "").strip().lower()
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()
+
 def ask_url(topic: str) -> str:
     r = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": URL_FINDER},
                   {"role": "user", "content": topic}],
-        temperature=0.2, max_tokens=200
+        temperature=0.1, max_tokens=180
     )
     return r.choices[0].message.content.strip()
 
@@ -71,13 +82,13 @@ def write_article(url: str) -> Dict:
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": SYSTEM_STYLE},
                   {"role": "user", "content": ARTICLE_PROMPT.format(url=url)}],
-        temperature=0.3, max_tokens=1600
+        temperature=0.25, max_tokens=2200
     )
     text = r.choices[0].message.content.strip()
     m = re.search(r'\{.*\}\s*$', text, re.S)
     return json.loads(m.group(0) if m else text)
 
-# ===== Unsplash =====
+# ===== Unsplash (uses your existing UNSPLASH_KEY) =====
 UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
 def unsplash_image(query: str) -> Optional[str]:
     if not UNSPLASH_KEY: return None
@@ -119,6 +130,30 @@ def get_story_image(queries: List[str], title_slug: str) -> str:
             return download_image(url, f"{title_slug}")
     return FALLBACK if (BASE / FALLBACK).exists() else ""
 
+# ===== RSS utilities (Google News) =====
+def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
+    """
+    Returns a list of {title, link} from Google News. If query is None, fetch Top Stories.
+    """
+    if query:
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+    else:
+        url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        root = ET.fromstring(r.text)
+        items = []
+        for item in root.findall(".//item")[:limit]:
+            title = item.findtext("title") or ""
+            link = item.findtext("link") or ""
+            # Google News links often wrap; prefer the <link> text as-is
+            items.append({"title": title.strip(), "link": link.strip()})
+        return items
+    except Exception as e:
+        print("RSS error:", e)
+        return []
+
 # ===== Rendering & index injections =====
 def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str:
     html = ARTICLE_TPL.read_text(encoding="utf-8")
@@ -136,10 +171,12 @@ def replace_block(html: str, start_tag: str, end_tag: str, inner: str) -> str:
     block = f"{start_tag}\n{inner}\n{end_tag}"
     return re.sub(re.escape(start_tag) + r".*?" + re.escape(end_tag), block, html, flags=re.S)
 
-def update_index(slides_html: str, headlines_html: str):
+def update_index(slides_html: str, headlines_html: str, ticker_text: str, trending_html: str):
     html = INDEX.read_text(encoding="utf-8")
     html = replace_block(html, "<!--SLIDES-->", "<!--/SLIDES-->", slides_html)
     html = replace_block(html, "<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
+    html = replace_block(html, "<!--TICKER-->", "<!--/TICKER-->", ticker_text)
+    html = replace_block(html, "<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
     INDEX.write_text(html, encoding="utf-8")
 
 def render_archive(manifest: List[Dict]):
@@ -165,27 +202,23 @@ def load_manifest() -> List[Dict]:
 def save_manifest(items: List[Dict]):
     MANIFEST.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
-# ===== Main (with duplicate protection) =====
+# ===== Main (800 words, dedupe, ticker/trending) =====
 def main():
     ART_DIR.mkdir(exist_ok=True, parents=True)
     manifest = load_manifest()
-    seen_urls = {m.get("source_url","") for m in manifest if m.get("source_url")}
-    seen_titles = {m["title"] for m in manifest}
+    seen = {m.get("fp") for m in manifest if m.get("fp")}
 
     created: List[Dict] = []
     topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
 
     for topic in topics:
         try:
-            url = ask_url(topic)
-            if url in seen_urls:
-                print("Duplicate URL skipped:", url)
-                continue
-
-            payload = write_article(url)
+            source_url = ask_url(topic)
+            payload = write_article(source_url)
             title = (payload.get("title") or "Untitled").strip()
-            if title in seen_titles:
-                print("Duplicate title skipped:", title)
+            fp = fingerprint(source_url, title)
+            if fp in seen:
+                print("Duplicate skipped:", title)
                 continue
 
             slug = slugify(title)
@@ -199,11 +232,10 @@ def main():
             filename = f"{slug}.html"
             (ART_DIR / filename).write_text(html, encoding="utf-8")
 
-            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts, "source_url": url}
+            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts, "source_url": source_url, "fp": fp}
             manifest.append(item)
             created.append(item)
-            seen_urls.add(url); seen_titles.add(title)
-
+            seen.add(fp)
         except Exception as e:
             print("Error generating:", e)
 
@@ -211,18 +243,30 @@ def main():
         save_manifest(manifest)
         render_archive(manifest)
 
-        latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
-        slides = [
-            f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
-            f"<div class=\"slide-content\"><h2 class=\"slide-headline\">{m['title']}</h2></div></a>"
-            for m in latest
-        ]
+    # Build homepage content from manifest + RSS
+    latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
+    slides = [
+        f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
+        f"<div class=\"slide-content\"><div class='kicker'>Top Story</div><h2 class=\"slide-headline\">{m['title']}</h2></div></a>"
+        for m in latest
+    ]
+    headlines_src = sorted(manifest, key=lambda x: x["date"], reverse=True)[:HEADLINES_COUNT]
+    headlines = [f"<li><a href=\"articles/{m['file']}\">{m['title']}</a></li>" for m in headlines_src]
 
-        # Build right-rail headlines
-        headlines_src = sorted(manifest, key=lambda x: x["date"], reverse=True)[:HEADLINES_COUNT]
-        headlines = [f"<li><a href=\"articles/{m['file']}\">{m['title']}</a></li>" for m in headlines_src]
+    # Ticker from RSS across your interests
+    ticker_items: List[str] = []
+    for t in INTERESTS:
+        for itm in google_news_rss(t, limit=2):
+            ticker_items.append(itm["title"])
+            if len(ticker_items) >= TICKER_COUNT: break
+        if len(ticker_items) >= TICKER_COUNT: break
+    ticker_text = " · ".join(ticker_items) if ticker_items else "Fresh updates every cycle."
 
-        update_index("\n".join(slides), "\n".join(headlines))
+    # Trending from Top Stories RSS (first N titles)
+    trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
+    trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{i['title']}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
+
+    update_index("\n".join(slides), "\n".join(headlines), ticker_text, trending_html)
 
 if __name__ == "__main__":
     main()
