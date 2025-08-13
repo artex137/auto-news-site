@@ -3,58 +3,42 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ title }} — The Search 433</title>
+  <title>{{ title }} — Search 433</title>
   <meta name="description" content="{{ meta_description }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
   <header class="site-header">
     <div class="container row between middle">
-      <a class="brand" href="../index.html">
-        <span class="brand-dot"></span><span class="brand-text">The Search <strong>433</strong></span>
-      </a>
+      <a class="brand" href="../index.html"><span class="crest">433</span><span class="brand-text"><em>Search</em> 433</span></a>
       <nav class="nav">
         <a href="../index.html" class="nav-link">Home</a>
+        <a href="./index.html" class="nav-link">Articles</a>
       </nav>
     </div>
   </header>
 
   <article class="section">
     <div class="container">
-      {% if hero %}
       <div class="card" style="overflow:hidden">
         <div class="card-media" style="aspect-ratio:16/7;background-image:url('{{ hero }}')"></div>
       </div>
-      {% endif %}
 
-      <div class="prose" style="max-width:860px;margin:20px auto 0">
-        <h1 style="font-size:clamp(26px,4.4vw,44px)">{{ title }}</h1>
-        <p class="card-meta">By <strong>Airyan Fawking</strong> — {{ timestamp }}</p>
-
+      <div class="prose" style="margin-top:18px">
+        <h1>{{ title }}</h1>
+        <p class="byline">{{ timestamp }}</p>
         {{ body | safe }}
-
-        {% if images and images|length > 1 %}
-          <h3 style="margin-top:28px">Images</h3>
-          <div class="cards">
-            {% for img in images[1:] %}
-              <a class="card" href="{{ img }}" target="_blank" rel="noopener">
-                <div class="card-media" style="background-image:url('{{ img }}')"></div>
-                <div class="card-body"><div class="card-meta">Open image</div></div>
-              </a>
-            {% endfor %}
-          </div>
-        {% endif %}
       </div>
     </div>
   </article>
 
   <footer class="site-footer">
     <div class="container row between wrap">
-      <p>&copy; <script>document.write(new Date().getFullYear())</script> The Search 433</p>
-      <p>Reported in straight news style. Updated automatically.</p>
+      <p>© <script>document.write(new Date().getFullYear())</script> Search 433</p>
+      <p class="muted">Preserved in the archive.</p>
     </div>
   </footer>
 </body>
