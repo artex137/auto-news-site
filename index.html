@@ -3,25 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>The Search 433 — Fresh Signals</title>
+  <title>The Search 433 — Breaking & Latest</title>
   <meta name="description" content="Ultra-clean, mobile-first automated news. Updated frequently.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
   <script defer src="slider.js"></script>
+  <style>
+    .slides:empty::before{
+      content:"Loading top stories…";
+      display:flex; align-items:center; justify-content:center;
+      height:54vh; max-height:680px; color:#c8d4cc;
+    }
+    .slide {display:block; width:100%; height:100%;}
+  </style>
 </head>
 <body class="bg">
   <header class="site-header">
     <div class="container row between middle">
-      <a class="brand" href="/">
+      <a class="brand" href="index.html">
         <span class="brand-dot"></span>
         <span class="brand-text">The Search <strong>433</strong></span>
       </a>
       <nav class="nav">
-        <a href="/" class="nav-link active">Home</a>
+        <a href="index.html" class="nav-link active">Home</a>
         <a href="#latest" class="nav-link">Latest</a>
-        <a href="#about" class="nav-link">About</a>
+        <a href="about.html" class="nav-link">About</a>
       </nav>
     </div>
   </header>
@@ -33,11 +41,16 @@
         <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
         <div class="slides">
           <!--SLIDES-->
-<a class="slide" href="articles/article1.html"><span class="badge">Fresh</span><h2>U.S. Treasury Proposes New Crypto Regulations to Enhance Consumer Protection</h2></a>
-<a class="slide" href="articles/article2.html"><span class="badge">Fresh</span><h2>Privacy Concerns Rise Amid Increasing Surveillance Technology Use in the U.S.</h2></a>
-<a class="slide" href="articles/article3.html"><span class="badge">Fresh</span><h2>Clean Energy Breakthroughs Highlighted at 2023 Energy Conference</h2></a>
-<a class="slide" href="articles/article4.html"><span class="badge">Fresh</span><h2>U.S. Regulators Seek to Enhance AI Safety Standards Amid Growing Concerns</h2></a>
-<!--/SLIDES-->>
+          <!-- Default visible slides (will be overwritten by generator.py) -->
+          <a class="slide" href="articles/article1.html" style="background-image:url('assets/fallback-1.jpg')">
+            <span class="badge">Top Story</span>
+            <h2>Welcome to The Search 433 — automated straight-news reporting.</h2>
+          </a>
+          <a class="slide" href="articles/article2.html" style="background-image:url('assets/fallback-2.jpg')">
+            <span class="badge">Update</span>
+            <h2>Fresh stories will appear here shortly in this live headline slider.</h2>
+          </a>
+          <!--/SLIDES-->
         </div>
         <button class="slider-btn next" aria-label="Next">&#10095;</button>
         <div class="dots" aria-hidden="true"></div>
@@ -49,31 +62,4 @@
   <main id="latest" class="section">
     <div class="container">
       <h2 class="section-title">Latest stories</h2>
-      <p class="section-kicker">Fresh copy from our millennial non‑normie reporter, Airyan Fawking.</p>
-      <div class="cards">
-        <!--CARDS-->
-        <!-- Optional: you can have generator also inject a 4-card grid here later -->
-        <!--/CARDS-->
-      </div>
-    </div>
-  </main>
-
-  <section id="about" class="section section-alt">
-    <div class="container prose">
-      <h3>About</h3>
-      <p>
-        The Search 433 is a fully automated, ultra-clean news experience. Stories are reported in a straight
-        newspaper style by our consistent voice—<strong>Airyan Fawking</strong>—and refreshed on a tight cadence.
-      </p>
-    </div>
-  </section>
-
-  <footer class="site-footer">
-    <div class="container row between wrap">
-      <p>&copy; <span id="y"></span> The Search 433</p>
-      <p>Updated automatically. Not investment or legal advice.</p>
-    </div>
-    <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
-  </footer>
-</body>
-</html>
+      <p class="section-kicker">Fresh updates, straight from our automated newsroom.</p>
