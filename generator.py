@@ -19,7 +19,7 @@ ARTICLE_TPL = TPL_DIR / "article.html.j2"
 ARCHIVE_TPL = TPL_DIR / "articles_index.html.j2"
 INDEX = BASE / "index.html"
 
-# Topics (your list)
+# Topics
 INTERESTS = [
     "911 theories",
     "false flags",
@@ -57,7 +57,9 @@ ARTICLE_PROMPT = """Write the article described in the system message based stri
 Remember: ~800 words, with proper attributions and dates. Output JSON only as specified.
 """
 
-# ===== Helpers =====
+# Writer style: we cannot include demeaning language about mental health. Use a serious crime-desk tone.
+# (This replaces the earlier "criminally insane" phrasing with an intense, skeptical, detail-obsessed reporter voice.)
+
 def slugify(value: str, max_len: int = 60) -> str:
     value = unicodedata.normalize('NFKD', value)
     value = re.sub(r'[^\w\s-]', '', value, flags=re.U).strip().lower()
@@ -88,7 +90,7 @@ def write_article(url: str) -> Dict:
     m = re.search(r'\{.*\}\s*$', text, re.S)
     return json.loads(m.group(0) if m else text)
 
-# ===== Unsplash (uses your existing UNSPLASH_KEY) =====
+# ===== Unsplash (uses existing UNSPLASH_KEY) =====
 UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
 def unsplash_image(query: str) -> Optional[str]:
     if not UNSPLASH_KEY: return None
@@ -132,9 +134,6 @@ def get_story_image(queries: List[str], title_slug: str) -> str:
 
 # ===== RSS utilities (Google News) =====
 def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
-    """
-    Returns a list of {title, link} from Google News. If query is None, fetch Top Stories.
-    """
     if query:
         url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
     else:
@@ -147,12 +146,38 @@ def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
         for item in root.findall(".//item")[:limit]:
             title = item.findtext("title") or ""
             link = item.findtext("link") or ""
-            # Google News links often wrap; prefer the <link> text as-is
             items.append({"title": title.strip(), "link": link.strip()})
         return items
     except Exception as e:
         print("RSS error:", e)
         return []
+
+# ===== Weather (Open-Meteo, no key) =====
+def toronto_weather() -> str:
+    # Toronto approx lat/long
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": 43.65107,
+        "longitude": -79.347015,
+        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min",
+        "timezone": "America/Toronto"
+    }
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        cur = data.get("current", {})
+        daily = data.get("daily", {})
+        t = cur.get("temperature_2m")
+        feels = cur.get("apparent_temperature")
+        wind = cur.get("wind_speed_10m")
+        tmax = daily.get("temperature_2m_max", ["?"])[0]
+        tmin = daily.get("temperature_2m_min", ["?"])[0]
+        return f"{t}°C (feels {feels}°C), wind {wind} km/h · Today {tmin}°/{tmax}°"
+    except Exception as e:
+        print("Weather error:", e)
+        return "Weather unavailable"
 
 # ===== Rendering & index injections =====
 def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str:
@@ -171,12 +196,13 @@ def replace_block(html: str, start_tag: str, end_tag: str, inner: str) -> str:
     block = f"{start_tag}\n{inner}\n{end_tag}"
     return re.sub(re.escape(start_tag) + r".*?" + re.escape(end_tag), block, html, flags=re.S)
 
-def update_index(slides_html: str, headlines_html: str, ticker_text: str, trending_html: str):
+def update_index(slides_html: str, headlines_html: str, ticker_text: str, trending_html: str, weather_text: str):
     html = INDEX.read_text(encoding="utf-8")
     html = replace_block(html, "<!--SLIDES-->", "<!--/SLIDES-->", slides_html)
     html = replace_block(html, "<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
     html = replace_block(html, "<!--TICKER-->", "<!--/TICKER-->", ticker_text)
     html = replace_block(html, "<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
+    html = replace_block(html, "<!--WEATHER-->", "<!--/WEATHER-->", weather_text)
     INDEX.write_text(html, encoding="utf-8")
 
 def render_archive(manifest: List[Dict]):
@@ -202,11 +228,11 @@ def load_manifest() -> List[Dict]:
 def save_manifest(items: List[Dict]):
     MANIFEST.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
-# ===== Main (800 words, dedupe, ticker/trending) =====
+# ===== Main =====
 def main():
     ART_DIR.mkdir(exist_ok=True, parents=True)
     manifest = load_manifest()
-    seen = {m.get("fp") for m in manifest if m.get("fp")}
+    seen_fps = {m.get("fp") for m in manifest if m.get("fp")}
 
     created: List[Dict] = []
     topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
@@ -217,7 +243,7 @@ def main():
             payload = write_article(source_url)
             title = (payload.get("title") or "Untitled").strip()
             fp = fingerprint(source_url, title)
-            if fp in seen:
+            if fp in seen_fps:
                 print("Duplicate skipped:", title)
                 continue
 
@@ -235,7 +261,7 @@ def main():
             item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts, "source_url": source_url, "fp": fp}
             manifest.append(item)
             created.append(item)
-            seen.add(fp)
+            seen_fps.add(fp)
         except Exception as e:
             print("Error generating:", e)
 
@@ -243,17 +269,15 @@ def main():
         save_manifest(manifest)
         render_archive(manifest)
 
-    # Build homepage content from manifest + RSS
     latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
     slides = [
-        f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
-        f"<div class=\"slide-content\"><div class='kicker'>Top Story</div><h2 class=\"slide-headline\">{m['title']}</h2></div></a>"
+        f"<a class=\\"slide\\" href=\\"articles/{m['file']}\\\" style=\\"background-image:url('{m['image']}')\\">"
+        f"<div class=\\"slide-content\\"><div class='kicker'>Top Story</div><h2 class=\\"slide-headline\\">{m['title']}</h2></div></a>"
         for m in latest
     ]
     headlines_src = sorted(manifest, key=lambda x: x["date"], reverse=True)[:HEADLINES_COUNT]
-    headlines = [f"<li><a href=\"articles/{m['file']}\">{m['title']}</a></li>" for m in headlines_src]
+    headlines = [f"<li><a href=\\"articles/{m['file']}\\">{m['title']}</a></li>" for m in headlines_src]
 
-    # Ticker from RSS across your interests
     ticker_items: List[str] = []
     for t in INTERESTS:
         for itm in google_news_rss(t, limit=2):
@@ -262,11 +286,12 @@ def main():
         if len(ticker_items) >= TICKER_COUNT: break
     ticker_text = " · ".join(ticker_items) if ticker_items else "Fresh updates every cycle."
 
-    # Trending from Top Stories RSS (first N titles)
     trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
-    trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{i['title']}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
+    trending_html = "\\n".join([f"<li><a href=\\"{i['link']}\\\" target=\\"_blank\\" rel=\\"noopener\\">{i['title']}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
 
-    update_index("\n".join(slides), "\n".join(headlines), ticker_text, trending_html)
+    weather_text = toronto_weather()
+
+    update_index("\\n".join(slides), "\\n".join(headlines), ticker_text, trending_html, weather_text)
 
 if __name__ == "__main__":
     main()
