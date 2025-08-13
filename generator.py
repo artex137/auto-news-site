@@ -20,7 +20,7 @@ INDEX = BASE / "index.html"
 
 UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
 
-# 30-topic interest list (broad from your history)
+# Interests (30)
 INTERESTS = [
     "cosmic ray influence on precognition",
     "MKSEARCH psi experiments",
@@ -54,9 +54,9 @@ INTERESTS = [
     "macro economics and rates"
 ]
 
-NUM_ARTICLES = 4         # per run
-SLIDER_LATEST = 4        # how many to show on homepage
-FALLBACK = "assets/fallback-hero.jpg"  # ensure this exists
+NUM_ARTICLES = 4
+SLIDER_LATEST = 4
+FALLBACK = "assets/fallback-hero.jpg"  # relative to repo root
 
 SYSTEM_STYLE = """Write in straight newspaper style (inverted pyramid). Neutral tone, clear sourcing, quotes with attribution.
 Return JSON with: "title", "meta_description", "body_html", "image_queries" (2-3 concise)."""
@@ -73,7 +73,7 @@ Return JSON:
 - "body_html": HTML body with <p>, <h2>, <blockquote> (no <html>/<body> wrappers)
 - "image_queries": 2–3 short phrases for related photos"""
 
-# ===== Utilities =====
+# ===== Helpers =====
 def slugify(value:str, max_len:int=60)->str:
     value = unicodedata.normalize('NFKD', value)
     value = re.sub(r'[^\w\s-]', '', value, flags=re.U).strip().lower()
@@ -101,6 +101,7 @@ def write_article(url:str)->Dict:
     return json.loads(m.group(0) if m else text)
 
 def unsplash(query:str)->str:
+    """Download an Unsplash image and return a repo-root-relative path like 'assets/<file>.jpg'."""
     if not UNSPLASH_KEY:
         return FALLBACK
     try:
@@ -108,35 +109,36 @@ def unsplash(query:str)->str:
             "https://api.unsplash.com/photos/random",
             params={"query":query,"orientation":"landscape","content_filter":"high"},
             headers={"Authorization":f"Client-ID {UNSPLASH_KEY}"},
-            timeout=15
+            timeout=20
         )
         resp.raise_for_status()
         data = resp.json()
         url = data.get("urls",{}).get("regular")
         if not url:
             return FALLBACK
-        img_bytes = requests.get(url, timeout=20).content
+        img = requests.get(url, timeout=30)
+        img.raise_for_status()
         ASSETS.mkdir(exist_ok=True, parents=True)
         fname = f"{data.get('id','img')}.jpg"
         path = ASSETS / fname
-        with open(path,"wb") as f:
-            f.write(img_bytes)
+        with open(path, "wb") as f:
+            f.write(img.content)
         return f"assets/{fname}"
     except Exception as e:
         print("Unsplash error:", e)
         return FALLBACK
 
-def render_article(payload:Dict, images:List[str], ts_utc:str)->str:
+def render_article(payload:Dict, hero_rel_for_article:str, ts_utc:str)->str:
+    """Render article page. 'hero_rel_for_article' must be path relative to /articles/ (i.e., '../assets/..')."""
     from jinja2 import Template
     with open(ARTICLE_TPL,"r",encoding="utf-8") as f:
         tpl = Template(f.read())
-    hero = images[0] if images else FALLBACK
     return tpl.render(
         title=payload.get("title","Untitled"),
         meta_description=payload.get("meta_description",""),
         body=payload.get("body_html",""),
-        hero=hero,
-        images=images,
+        hero=hero_rel_for_article,
+        images=[],  # optional gallery not used now
         timestamp=ts_utc
     )
 
@@ -152,15 +154,14 @@ def render_archive(manifest:List[Dict]):
     from jinja2 import Template
     with open(ARCHIVE_TPL,"r",encoding="utf-8") as f:
         tpl = Template(f.read())
-    # Newest first
     articles = [{
         "href": f"./{m['file']}",
         "title": m["title"],
-        "image": m.get("image", FALLBACK),
+        "image": m.get("image", FALLBACK),  # used with ../ prefix in template
         "date": m["date"]
     } for m in sorted(manifest, key=lambda x: x["date"], reverse=True)]
     out = tpl.render(articles=articles)
-    (ART_DIR).mkdir(exist_ok=True, parents=True)
+    ART_DIR.mkdir(exist_ok=True, parents=True)
     with open(ART_DIR / "index.html","w",encoding="utf-8") as f:
         f.write(out)
 
@@ -179,62 +180,54 @@ def save_manifest(items:List[Dict]):
 def main():
     ART_DIR.mkdir(exist_ok=True, parents=True)
     manifest = load_manifest()
-
     created = []
-    topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
 
+    topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
     for topic in topics:
         try:
             url = ask_url(topic)
             payload = write_article(url)
-            title = payload.get("title","Untitled").strip()
+            title = (payload.get("title") or "Untitled").strip()
             slug = slugify(title)
             ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-            # Images
+            # Images: repo-root-relative paths like 'assets/abc.jpg'
             queries = payload.get("image_queries") or [title]
-            images = []
-            for q in queries[:3]:
-                img = unsplash(q)
-                if img: images.append(img)
-            if not images: images = [FALLBACK]
+            images = [unsplash(q) for q in queries[:3] if q]
+            hero_repo_rel = images[0] if images else FALLBACK
 
-            # Render + save article (permanent)
-            html = render_article(payload, images, ts)
+            # Article page lives in /articles/, so hero must be '../assets/...'
+            if hero_repo_rel.startswith("assets/"):
+                hero_rel_for_article = "../" + hero_repo_rel
+            else:
+                # safety: keep relative
+                hero_rel_for_article = "../" + hero_repo_rel.lstrip("./")
+
+            # Render + save permanent article
+            html = render_article(payload, hero_rel_for_article, ts)
             filename = f"{slug}.html"
             with open(ART_DIR / filename, "w", encoding="utf-8") as f:
                 f.write(html)
 
-            item = {
-                "title": title,
-                "file": filename,
-                "image": images[0],
-                "date": ts
-            }
+            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts}
             manifest.append(item)
             created.append(item)
 
         except Exception as e:
             print("Error generating:", e)
 
-    # Persist manifest and rebuild archive
     if created:
         save_manifest(manifest)
         render_archive(manifest)
 
-        # Update homepage slider with latest N
+        # Update homepage slider with latest N (index.html is at repo root => use repo-root-relative)
         latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
-        slides = []
-        for m in latest:
-            slides.append(
-                f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
-                f"<div class=\"slide-content\"><h2 class=\"slide-headline\">{m['title']}</h2></div>"
-                f"</a>"
-            )
+        slides = [
+            f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
+            f"<div class=\"slide-content\"><h2 class=\"slide-headline\">{m['title']}</h2></div></a>"
+            for m in latest
+        ]
         update_index("\n".join(slides))
-    else:
-        # Keep homepage as-is if nothing was created
-        pass
 
 if __name__ == "__main__":
     main()
