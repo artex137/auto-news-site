@@ -11,9 +11,9 @@
   <link rel="stylesheet" href="style.css" />
   <script defer src="slider.js"></script>
   <script>
-    // tiny clock for the right-rail "Now" panel
     document.addEventListener('DOMContentLoaded',()=>{
       const el = document.getElementById('clock');
+      if(!el) return;
       const tz  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const fmt = new Intl.DateTimeFormat([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
       const dateFmt = new Intl.DateTimeFormat([], {weekday:'short', month:'short', day:'2-digit'});
@@ -25,14 +25,23 @@
     });
   </script>
 </head>
-<body class="theme-light">
+<body class="theme-darkblue">
   <!-- Top bar -->
   <header class="site-header">
     <div class="container row between middle">
-      <!-- New minimal logo -->
+      <!-- New SVG logo -->
       <a class="brand" href="index.html" aria-label="Search 433">
-        <span class="crest">433</span>
-        <span class="brand-text"><em>Search</em> 433</span>
+        <svg width="140" height="36" viewBox="0 0 140 36" aria-hidden="true" class="logo-svg">
+          <defs>
+            <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7fb2ff"/>
+              <stop offset="100%" stop-color="#2f6fff"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" rx="10" ry="10" width="44" height="36" fill="url(#g433)"></rect>
+          <text x="22" y="24" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
+          <text x="52" y="24" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
+        </svg>
       </a>
       <nav class="nav">
         <a href="index.html" class="nav-link active">Home</a>
@@ -44,24 +53,39 @@
   <!-- Primary grid -->
   <section class="frontgrid">
     <div class="container grid-outer">
-      <!-- Main well (slider + latest cards) -->
+      <!-- Main well (slider + ticker + latest cards) -->
       <div class="grid-main">
-        <!-- Slider in the "main video" slot -->
+        <!-- Slider -->
         <div class="slider card" data-autoplay="7000">
           <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
           <div class="slides">
             <!--SLIDES-->
-<a class="slide" href="articles/joe-rogans-podcast-faces-criticism-amid-spotifys-content-pol.html" style="background-image:url('assets/joe-rogans-podcast-faces-criticism-amid-spotifys-content-pol.jpg')"><div class="slide-content"><h2 class="slide-headline">Joe Rogan's Podcast Faces Criticism Amid Spotify's Content Policies</h2></div></a>
-<a class="slide" href="articles/us-government-releases-new-report-on-unidentified-aerial-phe.html" style="background-image:url('assets/us-government-releases-new-report-on-unidentified-aerial-phe.jpg')"><div class="slide-content"><h2 class="slide-headline">US Government Releases New Report on Unidentified Aerial Phenomena</h2></div></a>
-<a class="slide" href="articles/trump-appeals-new-york-judges-ruling-in-ongoing-fraud-case.html" style="background-image:url('assets/trump-appeals-new-york-judges-ruling-in-ongoing-fraud-case.jpg')"><div class="slide-content"><h2 class="slide-headline">Trump Appeals New York Judge's Ruling in Ongoing Fraud Case</h2></div></a>
-<a class="slide" href="articles/israel-hamas-conflict-escalates-amid-international-calls-for.html" style="background-image:url('assets/israel-hamas-conflict-escalates-amid-international-calls-for.jpg')"><div class="slide-content"><h2 class="slide-headline">Israel-Hamas Conflict Escalates Amid International Calls for Ceasefire</h2></div></a>
-<!--/SLIDES-->
+            <!-- Default placeholder; generator replaces this block -->
+            <a class="slide" href="articles/index.html" style="background-image:url('assets/fallback-hero.jpg')">
+              <div class="slide-content">
+                <div class="kicker">Top Story</div>
+                <h2 class="slide-headline">Welcome to Search 433 — live headlines with a permanent archive.</h2>
+              </div>
+            </a>
+            <!--/SLIDES-->
           </div>
           <button class="slider-btn next" aria-label="Next">&#10095;</button>
           <div class="dots" aria-hidden="true"></div>
         </div>
 
-        <!-- Latest cards (optional manual links, or leave as archive CTA) -->
+        <!-- Ticker (moved directly under the slider) -->
+        <section class="ticker">
+          <div class="ticker-inner card">
+            <span class="tick-label">LIVE</span>
+            <marquee behavior="scroll" direction="left" scrollamount="6">
+              <!--TICKER-->
+              Loading latest headlines…
+              <!--/TICKER-->
+            </marquee>
+          </div>
+        </section>
+
+        <!-- Latest cards (archive CTA) -->
         <div class="cards mt-16">
           <a class="card" href="articles/index.html">
             <div class="card-media" style="background-image:url('assets/fallback-card.jpg')"></div>
@@ -81,17 +105,11 @@
         </div>
 
         <div class="rail-block card">
-          <div class="rail-title">Trending</div>
+          <div class="rail-title">Trending Now</div>
           <ul class="rail-list">
-            <!--GEN-TRENDING-->
-            <li>#911 theories</li>
-            <li>#false flags</li>
-            <li>#aliens</li>
-            <li>#comet 3I/ATLAS</li>
-            <li>#UFOs</li>
-            <li>#Joe Rogan</li>
-            <li>#President Trump</li>
-            <!--/GEN-TRENDING-->
+            <!--TRENDING-->
+            <li>Loading…</li>
+            <!--/TRENDING-->
           </ul>
         </div>
 
@@ -99,30 +117,11 @@
           <div class="rail-title">Latest Headlines</div>
           <ul class="rail-list">
             <!--HEADLINES-->
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotifys-content-pol.html">Joe Rogan's Podcast Faces Criticism Amid Spotify's Content Policies</a></li>
-<li><a href="articles/us-government-releases-new-report-on-unidentified-aerial-phe.html">US Government Releases New Report on Unidentified Aerial Phenomena</a></li>
-<li><a href="articles/trump-appeals-new-york-judges-ruling-in-ongoing-fraud-case.html">Trump Appeals New York Judge's Ruling in Ongoing Fraud Case</a></li>
-<li><a href="articles/israel-hamas-conflict-escalates-amid-international-calls-for.html">Israel-Hamas Conflict Escalates Amid International Calls for Ceasefire</a></li>
-<li><a href="articles/us-ufo-report-2023-government-confirms-over-500-unidentified.html">US UFO Report 2023: Government Confirms Over 500 Unidentified Aerial Phenomena</a></li>
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotify-controversie.html">Joe Rogan's Podcast Faces Criticism Amid Spotify Controversies</a></li>
-<li><a href="articles/skepticism-surrounds-claims-of-alien-life-amid-new-scientifi.html">Skepticism Surrounds Claims of Alien Life Amid New Scientific Discoveries</a></li>
-<li><a href="articles/joe-rogans-podcast-faces-criticism-amid-spotifys-content-str.html">Joe Rogan's Podcast Faces Criticism Amid Spotify's Content Strategy Changes</a></li>
-<!--/HEADLINES-->
+            <li><a href="articles/index.html">Archive — see all stories →</a></li>
+            <!--/HEADLINES-->
           </ul>
         </div>
       </aside>
-    </div>
-  </section>
-
-  <!-- Ticker strip -->
-  <section class="ticker">
-    <div class="container ticker-inner">
-      <span class="tick-label">LIVE</span>
-      <marquee behavior="scroll" direction="left" scrollamount="6">
-        <!--TICKER-->
-        Fresh updates every cycle · No duplicates · Topics: 911 theories · false flags · aliens · comet 3I/ATLAS · UFOs · Joe Rogan podcasts · President Trump
-        <!--/TICKER-->
-      </marquee>
     </div>
   </section>
 
