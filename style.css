@@ -1,76 +1,134 @@
-/* style.css */
+/* ========== Design Tokens ========== */
+:root{
+  --bg-0:#0b0e0c;         /* near-black base */
+  --bg-1:#111512;         /* card backdrop */
+  --ink:#eef4ed;          /* primary text */
+  --muted:#c8d4cc;        /* secondary text */
 
-/* Reset basics */
-* { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Brand: light greens, yellows, oranges */
+  --g1:#c9f8b6; /* light green */
+  --g2:#b3efc7; /* mint */
+  --y1:#ffeaa7; /* soft yellow */
+  --o1:#ffd0a6; /* light orange */
+  --o2:#ffb27b; /* stronger orange */
 
-/* Body & nav */
-body {
-  font-family: Arial, sans-serif;
-  background: #f5f5f5;
-}
-nav {
-  background: #222;
-  color: #fff;
-  padding: 1rem 2rem;
-}
-nav h1 {
-  font-size: 1.75rem;
-}
-
-/* Slider container */
-#slider {
-  position: relative;
-  width: 100%;
-  max-width: 800px;
-  margin: 2rem auto;
-  overflow: hidden;
-  border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  background: #000;
+  --brand-grad: linear-gradient(135deg,var(--g1),var(--y1),var(--o1),var(--o2));
+  --radius:20px;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --glass: rgba(255,255,255,.06);
 }
 
-/* The sliding strip */
-#slides {
-  display: flex;
-  transition: transform 0.5s ease-in-out;
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family: 'Inter',system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(201,248,182,.08), transparent 60%),
+    radial-gradient(1000px 500px at 110% 0%, rgba(255,234,167,.08), transparent 55%),
+    radial-gradient(900px 600px at 50% 120%, rgba(255,178,123,.08), transparent 60%),
+    var(--bg-0);
+}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;height:auto;display:block}
+
+/* ========== Layout Helpers ========== */
+.container{width:100%;max-width:1200px;margin:0 auto;padding:0 20px}
+.row{display:flex;gap:16px}
+.wrap{flex-wrap:wrap}
+.between{justify-content:space-between}
+.middle{align-items:center}
+.section{padding:56px 0}
+.section-alt{background: rgba(255,255,255,.02) }
+.section-title{font-size:28px;margin:0 0 6px 0}
+.section-kicker{margin:0 0 24px 0;color:var(--muted)}
+
+/* ========== Header ========== */
+.site-header{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:saturate(1.2) blur(8px);
+  background:linear-gradient(to bottom, rgba(11,14,12,.85), rgba(11,14,12,.55));
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.brand{display:flex;align-items:center;gap:10px;padding:14px 0;font-weight:800;letter-spacing:.3px}
+.brand-dot{
+  width:14px;height:14px;border-radius:50%;
+  background: var(--brand-grad); box-shadow:0 0 18px rgba(255,178,123,.6), 0 0 6px rgba(201,248,182,.7) inset;
+}
+.brand-text strong{
+  background:var(--brand-grad); -webkit-background-clip:text; background-clip:text; color:transparent
+}
+.nav{display:flex;gap:18px}
+.nav-link{padding:10px 12px;border-radius:12px;color:var(--muted)}
+.nav-link.active, .nav-link:hover{color:var(--ink);background:var(--glass)}
+
+/* ========== Hero / Slider ========== */
+.hero{padding:28px 0 12px 0}
+.slider{
+  position:relative;overflow:hidden;
+  border-radius:calc(var(--radius) + 8px);
+  background:var(--bg-1); box-shadow:var(--shadow);
+}
+.slides{display:flex;transition:transform .6s cubic-bezier(.22,.61,.36,1);touch-action:pan-y}
+.slide{
+  min-width:100%; position:relative; height:54vh; max-height:680px;
+  display:flex; align-items:flex-end; padding:24px;
+  background-size:cover; background-position:center;
+}
+.slide::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(to top, rgba(0,0,0,.58), rgba(0,0,0,.25) 40%, transparent 75%);
+}
+.slide h2{
+  position:relative; margin:0; max-width:900px; z-index:2;
+  font-size: clamp(22px, 3.8vw, 44px); line-height:1.08;
+  text-shadow:0 6px 24px rgba(0,0,0,.45);
+}
+.slide .badge{
+  position:absolute; top:16px; left:16px; z-index:2;
+  padding:8px 12px; border-radius:999px; font-weight:600; letter-spacing:.2px;
+  background: var(--brand-grad); color:#08110a; box-shadow:0 10px 24px rgba(255,178,123,.35)
 }
 
-/* Each slide */
-.slide {
-  flex: 0 0 100%;
-  position: relative;
-  height: 300px;
-  background-size: cover;
-  background-position: center;
+.slider-btn{
+  position:absolute; inset-block:0; margin:auto 0; height:48px; width:48px; z-index:3;
+  border:0;border-radius:50%; cursor:pointer; font-size:24px;
+  background:rgba(0,0,0,.35); color:#fff; backdrop-filter: blur(4px);
+}
+.slider-btn:hover{background:rgba(0,0,0,.5)}
+.slider-btn.prev{left:10px} .slider-btn.next{right:10px}
+.dots{position:absolute; left:0; right:0; bottom:14px; display:flex; gap:8px; justify-content:center; z-index:3}
+.dot{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.4)}
+.dot.active{background:#fff}
+
+/* ========== Cards Grid ========== */
+.cards{
+  display:grid; grid-template-columns:repeat(12,1fr); gap:16px;
+}
+.card{
+  grid-column: span 12;
+  display:flex; flex-direction:column; overflow:hidden; border-radius:var(--radius);
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.06);
+  box-shadow: var(--shadow);
+}
+.card-media{aspect-ratio: 16/9; background:#0e1110; background-size:cover; background-position:center}
+.card-body{padding:18px}
+.card-title{font-weight:700;font-size:20px;margin:4px 0 8px 0}
+.card-meta{color:var(--muted);font-size:14px}
+.card:hover .card-title{text-decoration:underline}
+
+@media (min-width:740px){
+  .card{grid-column: span 6}
+}
+@media (min-width:1024px){
+  .card{grid-column: span 3}
 }
 
-/* Headline overlay */
-.slide h2 {
-  position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  right: 1rem;
-  padding: 0.5rem 1rem;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 1.2rem;
-  line-height: 1.4;
-  border-radius: 4px;
-}
+/* ========== Prose / Article ========== */
+.prose{color:var(--ink)}
+.prose h1,.prose h2,.prose h3{margin:0 0 12px}
+.prose p{line-height:1.68;color:var(--muted)}
 
-/* Prev/Next buttons */
-#prev, #next {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  border: none;
-  font-size: 2rem;
-  padding: 0.25rem 0.75rem;
-  cursor: pointer;
-  z-index: 2;
-  border-radius: 4px;
-}
-#prev { left: 0.5rem; }
-#next { right: 0.5rem; }
+/* ========== Footer ========== */
+.site-footer{padding:28px 0;color:var(--muted)}
