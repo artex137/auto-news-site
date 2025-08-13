@@ -219,4 +219,94 @@ def main():
     os.makedirs(ART_DIR, exist_ok=True)
     manifest = load_manifest()
     seen = {a["fingerprint"] for a in manifest if a.get("fingerprint")}
-    cutoff = datetime.utcnow() - timedelta(hours=NEWS_LOOKB_
+    cutoff = datetime.utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
+
+    # Collect fresh candidates across topics
+    candidates: List[Dict] = []
+    for topic in INTERESTS:
+        for it in google_news_rss(topic, limit=10):
+            if it["date"] < cutoff:
+                continue
+            candidates.append({"topic": topic, "title": it["title"], "link": it["link"], "date": it["date"]})
+    # newest first, unique by title+link
+    uniq, seen_tmp = [], set()
+    for c in sorted(candidates, key=lambda x: x["date"], reverse=True):
+        fp = fingerprint(c["title"], c["link"])
+        if fp in seen or fp in seen_tmp:
+            continue
+        uniq.append(c); seen_tmp.add(fp)
+        if len(uniq) >= NUM_PER_RUN: break
+
+    # Generate articles
+    used_img_ids: set = set()
+    created: List[Dict] = []
+    for c in uniq:
+        try:
+            body_html = openai_article(c["topic"], c["title"], c["link"])
+        except Exception as e:
+            print("OpenAI error:", e); continue
+
+        img_repo_rel = unsplash_unique(c["topic"], used_img_ids)
+        filename = f"{slugify(c['title'])}.html"
+        ts = c["date"].strftime("%Y-%m-%d %H:%M UTC")
+
+        page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts)
+        with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f:
+            f.write(page_html)
+
+        fp = fingerprint(c["title"], c["link"])
+        item = {
+            "title": c["title"],
+            "file": filename,
+            "image": img_repo_rel,
+            "date": ts,
+            "source_url": c["link"],
+            "fingerprint": fp,
+        }
+        manifest.insert(0, item)
+        created.append(item)
+
+    if created:
+        save_manifest(manifest)
+        render_archive(manifest)
+
+    # Build homepage blocks (from manifest + RSS + weather)
+    latest = manifest[:SLIDER_LATEST]
+    slides_html = "\n".join(
+        f"<a class='slide' href='articles/{m['file']}' style=\"background-image:url('{m.get('image','assets/fallback-hero.jpg')}')\">"
+        f"<div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>{html.escape(m['title'])}</h2></div></a>"
+        for m in latest
+    )
+    headlines_src = manifest[:HEADLINES_COUNT]
+    headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
+
+    # ticker from interests
+    ticker_titles: List[str] = []
+    for topic in INTERESTS:
+        for itm in google_news_rss(topic, limit=2):
+            ticker_titles.append(itm["title"])
+            if len(ticker_titles) >= TICKER_COUNT: break
+        if len(ticker_titles) >= TICKER_COUNT: break
+    ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
+
+    # trending from Top Stories
+    trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
+    trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
+
+    # weather
+    weather_text = toronto_weather()
+
+    # inject into static index.html
+    with open(INDEX, "r", encoding="utf-8") as f:
+        idx = f.read()
+    def rep(s,e,v): return re.sub(re.escape(s)+r".*?"+re.escape(e), f"{s}\n{v}\n{e}", idx, flags=re.S)
+    idx = rep("<!--SLIDES-->",   "<!--/SLIDES-->",   slides_html)
+    idx = rep("<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
+    idx = rep("<!--TICKER-->",   "<!--/TICKER-->",   ticker_text)
+    idx = rep("<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
+    idx = rep("<!--WEATHER-->",  "<!--/WEATHER-->",  weather_text)
+    with open(INDEX, "w", encoding="utf-8") as f:
+        f.write(idx)
+
+if __name__ == "__main__":
+    main()
