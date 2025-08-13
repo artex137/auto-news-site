@@ -1,4 +1,10 @@
-import os, re, json, hashlib, html, urllib.parse, xml.etree.ElementTree as ET
+import os
+import re
+import json
+import hashlib
+import html
+import urllib.parse
+import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
@@ -59,6 +65,7 @@ def fingerprint(title: str, url: str) -> str:
     return hashlib.sha1(base.encode("utf-8")).hexdigest()
 
 def load_manifest() -> List[Dict]:
+    # migrate from old root file if present
     legacy = os.path.join(BASE, "articles.json")
     if (not os.path.exists(MANIFEST)) and os.path.exists(legacy):
         try:
@@ -141,7 +148,8 @@ def download_image(url: str, filename_hint: str) -> str:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         ext = ".jpg"
-        if "image/png" in resp.headers.get("Content-Type", ""):
+        ctype = resp.headers.get("Content-Type", "")
+        if "image/png" in ctype:
             ext = ".png"
         fname = f"{filename_hint}{ext}"
         path = os.path.join(ASSETS, fname)
@@ -243,11 +251,10 @@ def main():
     candidates: List[Dict] = []
     for topic in INTERESTS:
         for it in google_news_rss(topic, limit=10):
-            if as_utc(it["date"]) < cutoff:
+            it_date = as_utc(it["date"])
+            if it_date < cutoff:
                 continue
-            candidates.append(
-                {"topic": topic, "title": it["title"], "link": it["link"], "date": as_utc(it["date"])}
-            )
+            candidates.append({"topic": topic, "title": it["title"], "link": it["link"], "date": it_date})
 
     # newest first, unique by title+link
     uniq, seen_tmp = [], set()
@@ -272,7 +279,7 @@ def main():
 
         img_repo_rel = unsplash_unique(c["topic"], used_img_ids)
         filename = f"{slugify(c['title'])}.html"
-        ts = as_utc(c["date"]).strftime("%Y-%m-%d %H:%M UTC")
+        ts = c["date"].strftime("%Y-%m-%d %H:%M UTC")
 
         page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts)
         with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f:
@@ -355,4 +362,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```0
