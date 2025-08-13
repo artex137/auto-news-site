@@ -1,20 +1,61 @@
-<!DOCTYPE html><html lang="en">
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ body.split('\n')[0][:70] }} – The Search 433</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ title }} — The Search 433</title>
+  <meta name="description" content="{{ meta_description }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-  <nav><a href="../index.html" style="color:#7cf">← Home</a></nav>
+  <header class="site-header">
+    <div class="container row between middle">
+      <a class="brand" href="../index.html">
+        <span class="brand-dot"></span><span class="brand-text">The Search <strong>433</strong></span>
+      </a>
+      <nav class="nav">
+        <a href="../index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
 
-  <article style="padding:20px; max-width:900px; margin:auto;">
-    <h1>{{ body.split('\n')[0] }}</h1>
+  <article class="section">
+    <div class="container">
+      {% if hero %}
+      <div class="card" style="overflow:hidden">
+        <div class="card-media" style="aspect-ratio:16/7;background-image:url('{{ hero }}')"></div>
+      </div>
+      {% endif %}
 
-    {% for img in imgs %}
-      <img src="../{{ img }}" style="width:100%; margin:20px 0; border-radius:4px">
-    {% endfor %}
+      <div class="prose" style="max-width:860px;margin:20px auto 0">
+        <h1 style="font-size:clamp(26px,4.4vw,44px)">{{ title }}</h1>
+        <p class="card-meta">By <strong>Airyan Fawking</strong> — {{ timestamp }}</p>
 
-    <p style="white-space:pre-wrap; line-height:1.6">{{ body }}</p>
-    <small>Updated {{ updated.strftime('%Y-%m-%d %H:%M UTC') }}</small>
+        {{ body | safe }}
+
+        {% if images and images|length > 1 %}
+          <h3 style="margin-top:28px">Images</h3>
+          <div class="cards">
+            {% for img in images[1:] %}
+              <a class="card" href="{{ img }}" target="_blank" rel="noopener">
+                <div class="card-media" style="background-image:url('{{ img }}')"></div>
+                <div class="card-body"><div class="card-meta">Open image</div></div>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
   </article>
-</body></html>
+
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>&copy; <script>document.write(new Date().getFullYear())</script> The Search 433</p>
+      <p>Reported in straight news style. Updated automatically.</p>
+    </div>
+  </footer>
+</body>
+</html>
