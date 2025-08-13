@@ -1,57 +1,72 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ title }} — Search 433</title>
-  <meta name="description" content="{{ meta_description }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="All articles - Search 433">
+  <title>Articles - Search 433</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body class="theme-darkblue">
+<body>
+  <!-- HEADER -->
   <header class="site-header">
-    <div class="container row between middle">
-      <a class="brand" href="../index.html" aria-label="Search 433">
-        <svg class="logo-svg" viewBox="0 0 160 40" width="160" height="40" aria-hidden="true">
-          <defs>
-            <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#7fb2ff"/>
-              <stop offset="100%" stop-color="#2f6fff"/>
-            </linearGradient>
-          </defs>
-          <rect x="0" y="0" rx="10" ry="10" width="52" height="40" fill="url(#g433)"></rect>
-          <text x="26" y="26" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
-          <text x="64" y="26" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
+    <div class="logo">
+      <a href="index.html">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" class="logo-svg">
+          <text x="0" y="70" font-size="72" font-family="Arial Black" fill="#1e3a8a">Search</text>
+          <text x="280" y="70" font-size="72" font-family="Arial Black" fill="#2563eb">433</text>
         </svg>
       </a>
-      <nav class="nav">
-        <a href="../index.html" class="nav-link">Home</a>
-        <a href="./index.html" class="nav-link">Articles</a>
-      </nav>
     </div>
+    <nav class="main-nav">
+      <a href="index.html">Home</a>
+      <a href="articles_index.html">Articles</a>
+      <a href="#">About</a>
+      <a href="#">Contact</a>
+    </nav>
   </header>
 
-  <article class="section">
-    <div class="container">
-      <div class="card" style="overflow:hidden">
-        <div class="card-media hero-media" style="aspect-ratio:16/9;background-image:url('{{ hero }}')"></div>
-      </div>
+  <main class="content-wrapper">
+    <section class="main-column">
+      <h1>Articles</h1>
+      <ul class="latest-headlines">
+        {% if articles %}
+          {% for article in articles %}
+            <li>
+              <a href="articles/{{ article.file }}">
+                <img src="{{ article.image }}" alt="{{ article.title }}" style="max-width: 100%; border-radius: 4px;" />
+                <h3>{{ article.title }}</h3>
+                <p>{{ article.summary }}</p>
+              </a>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li>No articles found</li>
+        {% endif %}
+      </ul>
+    </section>
 
-      <div class="prose" style="margin-top:18px">
-        <h1 class="article-title">{{ title }}</h1>
-        <p class="byline">{{ timestamp }}</p>
-        {{ body | safe }}
-      </div>
-    </div>
-  </article>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h2>Trending Now</h2>
+      <ul class="trending-list">
+        {% if trending_terms %}
+          {% for term in trending_terms %}
+            <li><a href="#">{{ term }}</a></li>
+          {% endfor %}
+        {% else %}
+          <li>No trending data</li>
+        {% endif %}
+      </ul>
+    </aside>
+  </main>
 
-  <footer class="site-footer">
-    <div class="container row between wrap">
-      <p>© <script>document.write(new Date().getFullYear())</script> Search 433</p>
-      <p class="muted">Preserved in the archive.</p>
-    </div>
+  <footer>
+    <p>&copy; <span id="year"></span> Search 433. All Rights Reserved.</p>
   </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
 </body>
 </html>
