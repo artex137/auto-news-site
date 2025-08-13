@@ -1,6 +1,6 @@
 import os, re, json, hashlib, html, urllib.parse, xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import requests
 from jinja2 import Template
@@ -39,6 +39,15 @@ TRENDING_COUNT = 8
 TICKER_COUNT = 12
 FALLBACK = "assets/fallback-hero.jpg"
 
+# ===== Time helpers (force UTC-aware) =====
+def as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
 # ===== Helpers =====
 def slugify(text: str) -> str:
     text = text.lower()
@@ -50,7 +59,6 @@ def fingerprint(title: str, url: str) -> str:
     return hashlib.sha1(base.encode("utf-8")).hexdigest()
 
 def load_manifest() -> List[Dict]:
-    # migrate from old root file if present
     legacy = os.path.join(BASE, "articles.json")
     if (not os.path.exists(MANIFEST)) and os.path.exists(legacy):
         with open(legacy, "r", encoding="utf-8") as f:
@@ -66,7 +74,6 @@ def load_manifest() -> List[Dict]:
             data = json.load(f)
         except Exception:
             return []
-    # backfill missing fingerprints
     changed = False
     for a in data:
         if "fingerprint" not in a:
@@ -95,7 +102,7 @@ def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
             title = (item.findtext("title") or "").strip()
             link = (item.findtext("link") or "").strip()
             pub  = (item.findtext("pubDate") or "").strip()
-            dt = parsedate_to_datetime(pub) if pub else datetime.utcnow()
+            dt = as_utc(parsedate_to_datetime(pub)) if pub else utcnow()
             items.append({"title": title, "link": link, "date": dt})
         return items
     except Exception as e:
@@ -103,7 +110,6 @@ def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
         return []
 
 def openai_article(topic: str, source_title: str, source_url: str) -> str:
-    # ~800 words, straight-news, skeptical crime-desk edge
     prompt = (
         "Write ~800 words in straight newspaper style (inverted pyramid). "
         "Neutral tone; careful attributions; clear sourcing. Use HTML <p>, optional <h2>, <blockquote> only. "
@@ -158,9 +164,9 @@ def unsplash_unique(query: str, used_ids: set) -> str:
             data = r.json()
             img_id = data.get("id")
             img_url = data.get("urls", {}).get("regular")
-            if not img_id or not img_url:  # try again
+            if not img_id or not img_url:
                 continue
-            if img_id in used_ids:         # avoid duplicates in the same batch
+            if img_id in used_ids:
                 continue
             used_ids.add(img_id)
             return download_image(img_url, slugify(f"{query}-{img_id}"))
@@ -219,7 +225,7 @@ def main():
     os.makedirs(ART_DIR, exist_ok=True)
     manifest = load_manifest()
     seen = {a["fingerprint"] for a in manifest if a.get("fingerprint")}
-    cutoff = datetime.utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
+    cutoff = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
 
     # Collect fresh candidates across topics
     candidates: List[Dict] = []
@@ -248,7 +254,7 @@ def main():
 
         img_repo_rel = unsplash_unique(c["topic"], used_img_ids)
         filename = f"{slugify(c['title'])}.html"
-        ts = c["date"].strftime("%Y-%m-%d %H:%M UTC")
+        ts = as_utc(c["date"]).strftime("%Y-%m-%d %H:%M UTC")
 
         page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts)
         with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f:
@@ -280,7 +286,6 @@ def main():
     headlines_src = manifest[:HEADLINES_COUNT]
     headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
 
-    # ticker from interests
     ticker_titles: List[str] = []
     for topic in INTERESTS:
         for itm in google_news_rss(topic, limit=2):
@@ -289,14 +294,11 @@ def main():
         if len(ticker_titles) >= TICKER_COUNT: break
     ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
 
-    # trending from Top Stories
     trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
     trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
 
-    # weather
     weather_text = toronto_weather()
 
-    # inject into static index.html
     with open(INDEX, "r", encoding="utf-8") as f:
         idx = f.read()
     def rep(s,e,v): return re.sub(re.escape(s)+r".*?"+re.escape(e), f"{s}\n{v}\n{e}", idx, flags=re.S)
@@ -310,3 +312,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```0
