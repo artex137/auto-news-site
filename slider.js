@@ -1,48 +1,65 @@
-// slider.js
+(function(){
+  const slider = document.querySelector('.slider');
+  if(!slider) return;
 
-const sliderSection    = document.getElementById('slider');
-const slidesContainer  = document.getElementById('slides');
-const slides           = document.querySelectorAll('.slide');
-const prevBtn          = document.getElementById('prev');
-const nextBtn          = document.getElementById('next');
-let currentIndex       = 0;
+  const track = slider.querySelector('.slides');
+  const slides = () => Array.from(slider.querySelectorAll('.slide'));
+  const btnPrev = slider.querySelector('.prev');
+  const btnNext = slider.querySelector('.next');
+  const dotsWrap = slider.querySelector('.dots');
+  const autoplay = Number(slider.getAttribute('data-autoplay') || 7000);
 
-// Ensure slides line up in a row
-slidesContainer.style.display    = 'flex';
-slidesContainer.style.transition = 'transform 0.5s ease';
+  let index = 0, timer = null, x0 = null, locked = false;
 
-// Make each slide exactly the width of the slider section
-function sizeSlides() {
-  const w = sliderSection.clientWidth + 'px';
-  slides.forEach(s => {
-    s.style.minWidth = w;
-    s.style.maxWidth = w;
+  function buildDots(){
+    dotsWrap.innerHTML = '';
+    slides().forEach((_,i)=>{
+      const d = document.createElement('span');
+      d.className = 'dot' + (i===index?' active':'');
+      d.addEventListener('click', ()=>go(i));
+      dotsWrap.appendChild(d);
+    });
+  }
+
+  function size(){
+    track.style.transform = `translate3d(${-index*100}%,0,0)`;
+    buildDots();
+  }
+
+  function go(i){
+    const total = slides().length;
+    index = (i+total)%total;
+    track.style.transform = `translate3d(${-index*100}%,0,0)`;
+    buildDots();
+    restart();
+  }
+
+  function next(){ go(index+1) }
+  function prev(){ go(index-1) }
+
+  function start(){ if(autoplay>0) timer = setInterval(next, autoplay) }
+  function stop(){ if(timer){ clearInterval(timer); timer=null } }
+  function restart(){ stop(); start(); }
+
+  // touch / drag
+  track.addEventListener('pointerdown', (e)=>{ x0=e.clientX; locked=true; stop(); track.setPointerCapture(e.pointerId); });
+  track.addEventListener('pointermove', (e)=>{
+    if(!locked) return;
+    const dx = e.clientX - x0;
+    track.style.transform = `translate3d(calc(${-index*100}% + ${dx}px),0,0)`;
   });
-}
-window.addEventListener('resize', sizeSlides);
-sizeSlides();
+  track.addEventListener('pointerup', (e)=>{
+    if(!locked) return;
+    const dx = e.clientX - x0;
+    locked=false; x0=null;
+    const w = slider.clientWidth;
+    if(Math.abs(dx) > w*0.18) (dx<0?next():prev()); else size();
+    start();
+  });
 
-// Shift to the slide at `currentIndex`
-function showSlide(idx) {
-  const offset = sliderSection.clientWidth * idx;
-  slidesContainer.style.transform = `translateX(-${offset}px)`;
-}
+  btnPrev.addEventListener('click', prev);
+  btnNext.addEventListener('click', next);
+  window.addEventListener('resize', size);
 
-// Next / previous handlers
-prevBtn.onclick = () => {
-  currentIndex = (currentIndex - 1 + slides.length) % slides.length;
-  showSlide(currentIndex);
-};
-nextBtn.onclick = () => {
-  currentIndex = (currentIndex + 1) % slides.length;
-  showSlide(currentIndex);
-};
-
-// Auto-advance every 30s
-setInterval(() => {
-  currentIndex = (currentIndex + 1) % slides.length;
-  showSlide(currentIndex);
-}, 30000);
-
-// Start on slide 0
-showSlide(0);
+  size(); start();
+})();
