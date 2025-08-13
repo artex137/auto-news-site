@@ -1,46 +1,63 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ title }} — Search 433</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="{{ meta_description }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css">
+  <title>{{ title }} - Search 433</title>
+  <link rel="stylesheet" href="../style.css" />
 </head>
 <body>
+  <!-- HEADER -->
   <header class="site-header">
-    <div class="container row between middle">
-      <a class="brand" href="../index.html"><span class="crest">433</span><span class="brand-text"><em>Search</em> 433</span></a>
-      <nav class="nav">
-        <a href="../index.html" class="nav-link">Home</a>
-        <a href="./index.html" class="nav-link">Articles</a>
-      </nav>
+    <div class="logo">
+      <a href="../index.html">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" class="logo-svg">
+          <text x="0" y="70" font-size="72" font-family="Arial Black" fill="#1e3a8a">Search</text>
+          <text x="280" y="70" font-size="72" font-family="Arial Black" fill="#2563eb">433</text>
+        </svg>
+      </a>
     </div>
+    <nav class="main-nav">
+      <a href="../index.html">Home</a>
+      <a href="../articles_index.html">Articles</a>
+      <a href="#">About</a>
+      <a href="#">Contact</a>
+    </nav>
   </header>
 
-  <article class="section">
-    <div class="container">
-      <div class="card" style="overflow:hidden">
-        <!-- NOTE: hero path is already adjusted to be relative to /articles/ -->
-        <div class="card-media" style="aspect-ratio:16/7;background-image:url('{{ hero }}')"></div>
-      </div>
-
-      <div class="prose" style="margin-top:18px">
-        <h1>{{ title }}</h1>
-        <p class="byline">{{ timestamp }}</p>
+  <!-- ARTICLE -->
+  <main class="content-wrapper">
+    <article class="main-column">
+      <h1>{{ title }}</h1>
+      <p class="article-meta">Published {{ timestamp }}</p>
+      <img src="{{ hero }}" alt="{{ title }}" class="article-hero" />
+      <div class="article-body">
         {{ body | safe }}
       </div>
-    </div>
-  </article>
+    </article>
 
-  <footer class="site-footer">
-    <div class="container row between wrap">
-      <p>© <script>document.write(new Date().getFullYear())</script> Search 433</p>
-      <p class="muted">Preserved in the archive.</p>
-    </div>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h2>Trending Now</h2>
+      <ul class="trending-list">
+        {% if trending_terms %}
+          {% for term in trending_terms %}
+            <li><a href="#">{{ term }}</a></li>
+          {% endfor %}
+        {% else %}
+          <li>No trending data</li>
+        {% endif %}
+      </ul>
+    </aside>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> Search 433. All Rights Reserved.</p>
   </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
 </body>
 </html>
