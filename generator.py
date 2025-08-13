@@ -28,7 +28,7 @@ INTERESTS = [
     "comet 3i atlas",
     "ufos",
     "joe rogan podcasts",
-    "president trump"
+    "president trump",
 ]
 
 NEWS_LOOKBACK_HOURS = 24
@@ -61,24 +61,27 @@ def fingerprint(title: str, url: str) -> str:
 def load_manifest() -> List[Dict]:
     legacy = os.path.join(BASE, "articles.json")
     if (not os.path.exists(MANIFEST)) and os.path.exists(legacy):
-        with open(legacy, "r", encoding="utf-8") as f:
-            try:
+        try:
+            with open(legacy, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                save_manifest(data)
-            except Exception:
-                pass
+            save_manifest(data)
+        except Exception:
+            pass
+
     if not os.path.exists(MANIFEST):
         return []
-    with open(MANIFEST, "r", encoding="utf-8") as f:
-        try:
+    try:
+        with open(MANIFEST, "r", encoding="utf-8") as f:
             data = json.load(f)
-        except Exception:
-            return []
+    except Exception:
+        return []
+
+    # Backfill missing fingerprints
     changed = False
     for a in data:
         if "fingerprint" not in a:
             url = a.get("source_url") or a.get("href") or a.get("file") or ""
-            a["fingerprint"] = fingerprint(a.get("title",""), url)
+            a["fingerprint"] = fingerprint(a.get("title", ""), url)
             changed = True
     if changed:
         save_manifest(data)
@@ -88,7 +91,7 @@ def save_manifest(items: List[Dict]):
     with open(MANIFEST, "w", encoding="utf-8") as f:
         json.dump(items, f, indent=2, ensure_ascii=False)
 
-def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
+def google_news_rss(query: Optional[str] = None, limit: int = 20) -> List[Dict]:
     if query:
         url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
     else:
@@ -101,7 +104,7 @@ def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
         for item in root.findall(".//item")[:limit]:
             title = (item.findtext("title") or "").strip()
             link = (item.findtext("link") or "").strip()
-            pub  = (item.findtext("pubDate") or "").strip()
+            pub = (item.findtext("pubDate") or "").strip()
             dt = as_utc(parsedate_to_datetime(pub)) if pub else utcnow()
             items.append({"title": title, "link": link, "date": dt})
         return items
@@ -138,7 +141,7 @@ def download_image(url: str, filename_hint: str) -> str:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         ext = ".jpg"
-        if "image/png" in resp.headers.get("Content-Type",""):
+        if "image/png" in resp.headers.get("Content-Type", ""):
             ext = ".png"
         fname = f"{filename_hint}{ext}"
         path = os.path.join(ASSETS, fname)
@@ -158,7 +161,7 @@ def unsplash_unique(query: str, used_ids: set) -> str:
                 "https://api.unsplash.com/photos/random",
                 headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
                 params={"query": query, "orientation": "landscape", "content_filter": "high"},
-                timeout=20
+                timeout=20,
             )
             r.raise_for_status()
             data = r.json()
@@ -182,17 +185,26 @@ def replace_block(html_text: str, start: str, end: str, inner: str) -> str:
 def render_article_page(title: str, meta_description: str, hero_repo_rel: str, body_html: str, ts: str) -> str:
     with open(ARTICLE_TPL, "r", encoding="utf-8") as f:
         tpl = Template(f.read())
-    return tpl.render(title=title, meta_description=meta_description, hero="../"+hero_repo_rel, body=body_html, timestamp=ts)
+    return tpl.render(
+        title=title,
+        meta_description=meta_description,
+        hero="../" + hero_repo_rel,
+        body=body_html,
+        timestamp=ts,
+    )
 
 def render_archive(manifest: List[Dict]):
     with open(ARCHIVE_TPL, "r", encoding="utf-8") as f:
         tpl = Template(f.read())
-    articles = [{
-        "href": f"./{m['file']}",
-        "title": m["title"],
-        "image": m.get("image", FALLBACK),
-        "date": m["date"]
-    } for m in manifest]
+    articles = [
+        {
+            "href": f"./{m['file']}",
+            "title": m["title"],
+            "image": m.get("image", FALLBACK),
+            "date": m["date"],
+        }
+        for m in manifest
+    ]
     html_out = tpl.render(articles=articles)
     os.makedirs(ART_DIR, exist_ok=True)
     with open(os.path.join(ART_DIR, "index.html"), "w", encoding="utf-8") as f:
@@ -231,17 +243,22 @@ def main():
     candidates: List[Dict] = []
     for topic in INTERESTS:
         for it in google_news_rss(topic, limit=10):
-            if it["date"] < cutoff:
+            if as_utc(it["date"]) < cutoff:
                 continue
-            candidates.append({"topic": topic, "title": it["title"], "link": it["link"], "date": it["date"]})
+            candidates.append(
+                {"topic": topic, "title": it["title"], "link": it["link"], "date": as_utc(it["date"])}
+            )
+
     # newest first, unique by title+link
     uniq, seen_tmp = [], set()
     for c in sorted(candidates, key=lambda x: x["date"], reverse=True):
         fp = fingerprint(c["title"], c["link"])
         if fp in seen or fp in seen_tmp:
             continue
-        uniq.append(c); seen_tmp.add(fp)
-        if len(uniq) >= NUM_PER_RUN: break
+        uniq.append(c)
+        seen_tmp.add(fp)
+        if len(uniq) >= NUM_PER_RUN:
+            break
 
     # Generate articles
     used_img_ids: set = set()
@@ -250,7 +267,8 @@ def main():
         try:
             body_html = openai_article(c["topic"], c["title"], c["link"])
         except Exception as e:
-            print("OpenAI error:", e); continue
+            print("OpenAI error:", e)
+            continue
 
         img_repo_rel = unsplash_unique(c["topic"], used_img_ids)
         filename = f"{slugify(c['title'])}.html"
@@ -279,34 +297,59 @@ def main():
     # Build homepage blocks (from manifest + RSS + weather)
     latest = manifest[:SLIDER_LATEST]
     slides_html = "\n".join(
-        f"<a class='slide' href='articles/{m['file']}' style=\"background-image:url('{m.get('image','assets/fallback-hero.jpg')}')\">"
-        f"<div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>{html.escape(m['title'])}</h2></div></a>"
-        for m in latest
+        [
+            (
+                "<a class='slide' href='articles/{file}' "
+                "style=\"background-image:url('{img}')\">"
+                "<div class='slide-content'><div class='kicker'>Top Story</div>"
+                "<h2 class='slide-headline'>{ttl}</h2></div></a>"
+            ).format(
+                file=m["file"],
+                img=m.get("image", "assets/fallback-hero.jpg"),
+                ttl=html.escape(m["title"]),
+            )
+            for m in latest
+        ]
     )
-    headlines_src = manifest[:HEADLINES_COUNT]
-    headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
 
+    headlines_src = manifest[:HEADLINES_COUNT]
+    headlines_html = "\n".join(
+        [f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src]
+    )
+
+    # ticker from interests
     ticker_titles: List[str] = []
     for topic in INTERESTS:
         for itm in google_news_rss(topic, limit=2):
             ticker_titles.append(itm["title"])
-            if len(ticker_titles) >= TICKER_COUNT: break
-        if len(ticker_titles) >= TICKER_COUNT: break
+            if len(ticker_titles) >= TICKER_COUNT:
+                break
+        if len(ticker_titles) >= TICKER_COUNT:
+            break
     ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
 
+    # trending from Top Stories
     trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
-    trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
+    trending_html = (
+        "\n".join(
+            [
+                f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>"
+                for i in trending_feed
+            ]
+        )
+        or "<li>No data.</li>"
+    )
 
     weather_text = toronto_weather()
 
+    # inject into static index.html
     with open(INDEX, "r", encoding="utf-8") as f:
         idx = f.read()
-    def rep(s,e,v): return re.sub(re.escape(s)+r".*?"+re.escape(e), f"{s}\n{v}\n{e}", idx, flags=re.S)
-    idx = rep("<!--SLIDES-->",   "<!--/SLIDES-->",   slides_html)
-    idx = rep("<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
-    idx = rep("<!--TICKER-->",   "<!--/TICKER-->",   ticker_text)
-    idx = rep("<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
-    idx = rep("<!--WEATHER-->",  "<!--/WEATHER-->",  weather_text)
+    idx = replace_block(idx, "<!--SLIDES-->", "<!--/SLIDES-->", slides_html)
+    idx = replace_block(idx, "<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
+    idx = replace_block(idx, "<!--TICKER-->", "<!--/TICKER-->", ticker_text)
+    idx = replace_block(idx, "<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
+    idx = replace_block(idx, "<!--WEATHER-->", "<!--/WEATHER-->", weather_text)
     with open(INDEX, "w", encoding="utf-8") as f:
         f.write(idx)
 
