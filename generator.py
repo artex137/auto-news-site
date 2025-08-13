@@ -1,25 +1,16 @@
-import os, re, json, random, datetime, pathlib, unicodedata, hashlib, urllib.parse, xml.etree.ElementTree as ET
-from typing import List, Dict, Optional
+import os
+import json
 import requests
-from openai import OpenAI
-from jinja2 import Template
+import re
+import html
+import hashlib
+from datetime import datetime, timedelta
+from jinja2 import Environment, FileSystemLoader
 
-# ===== Config =====
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# === CONFIG ===
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
 
-BASE = pathlib.Path(__file__).parent.resolve()
-ART_DIR = BASE / "articles"
-ASSETS = BASE / "assets"
-DATA_DIR = BASE / "data"
-DATA_DIR.mkdir(exist_ok=True, parents=True)
-MANIFEST = DATA_DIR / "articles.json"
-
-TPL_DIR = BASE / "templates"
-ARTICLE_TPL = TPL_DIR / "article.html.j2"
-ARCHIVE_TPL = TPL_DIR / "articles_index.html.j2"
-INDEX = BASE / "index.html"
-
-# Topics
 INTERESTS = [
     "911 theories",
     "false flags",
@@ -30,268 +21,180 @@ INTERESTS = [
     "president trump"
 ]
 
-NUM_ARTICLES = 4
-SLIDER_LATEST = 4
-HEADLINES_COUNT = 10
-TRENDING_COUNT = 8
-TICKER_COUNT = 12
-FALLBACK = "assets/fallback-hero.jpg"
+ARTICLE_MIN_WORDS = 800
+NEWS_LOOKBACK_HOURS = 24
+DATA_FILE = "data/articles.json"
+ASSETS_DIR = "assets"
 
-SYSTEM_STYLE = """You are a straight-news reporter. Write ~800 words (±10%) in newspaper style using the inverted pyramid:
-lede (who/what/when/where/why/how) → nut graf → key facts with quotes & attributions → context → forward-looking kicker.
-Neutral tone; AP-adjacent; modern vocabulary without slang. Attribute all claims to sources.
+# === SETUP ===
+env = Environment(loader=FileSystemLoader("templates"))
+os.makedirs("articles", exist_ok=True)
+os.makedirs(ASSETS_DIR, exist_ok=True)
 
-Return a JSON object with:
-"title" (<= 90 chars),
-"meta_description" (140–160 chars),
-"body_html" (HTML only: <p>, <h2>, <ul>, <li>, <blockquote> for quotes),
-"image_queries" (2–3 short phrases for related photos).
-"""
+# === HELPERS ===
+def slugify(text):
+    return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
-URL_FINDER = """Return exactly one reputable, working news URL (no hard paywall if possible), published within the last 24 hours,
-about the provided topic. Respond with ONLY the URL."""
+def fingerprint(title, url):
+    return hashlib.md5((title.lower().strip() + url.lower().strip()).encode()).hexdigest()
 
-ARTICLE_PROMPT = """Write the article described in the system message based strictly on this source URL:
-{url}
+def load_existing_fingerprints():
+    if not os.path.exists(DATA_FILE):
+        return set()
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return {a["fingerprint"] for a in data}
 
-Remember: ~800 words, with proper attributions and dates. Output JSON only as specified.
-"""
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
-# Writer style: we cannot include demeaning language about mental health. Use a serious crime-desk tone.
-# (This replaces the earlier "criminally insane" phrasing with an intense, skeptical, detail-obsessed reporter voice.)
+def fetch_google_news(topic):
+    rss_url = f"https://news.google.com/rss/search?q={requests.utils.quote(topic)}&hl=en-CA&gl=CA&ceid=CA:en"
+    r = requests.get(rss_url, timeout=10)
+    r.raise_for_status()
+    return r.text
 
-def slugify(value: str, max_len: int = 60) -> str:
-    value = unicodedata.normalize('NFKD', value)
-    value = re.sub(r'[^\w\s-]', '', value, flags=re.U).strip().lower()
-    value = re.sub(r'[\s_-]+', '-', value)
-    return value[:max_len].strip('-') or "article"
+def parse_rss(xml_text):
+    matches = re.findall(r"<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?<link>(.*?)</link>.*?<pubDate>(.*?)</pubDate>", xml_text, re.S)
+    articles = []
+    for title, link, pub_date in matches:
+        dt = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
+        articles.append({"title": html.unescape(title), "link": link, "date": dt})
+    return articles
 
-def fingerprint(url: str, title: str) -> str:
-    norm = (url or "").strip().lower() + "|" + (title or "").strip().lower()
-    return hashlib.sha1(norm.encode("utf-8")).hexdigest()
+def fetch_unsplash_image(query):
+    if not UNSPLASH_KEY:
+        return "assets/fallback-hero.jpg"
+    url = "https://api.unsplash.com/photos/random"
+    params = {"query": query, "orientation": "landscape", "content_filter": "high"}
+    headers = {"Authorization": f"Client-ID {UNSPLASH_KEY}"}
+    r = requests.get(url, params=params, headers=headers, timeout=10)
+    if r.status_code != 200:
+        return "assets/fallback-hero.jpg"
+    data = r.json()
+    img_url = data.get("urls", {}).get("regular")
+    if not img_url:
+        return "assets/fallback-hero.jpg"
+    img_data = requests.get(img_url, timeout=10).content
+    fname = f"{slugify(query)}-{data.get('id')}.jpg"
+    path = os.path.join(ASSETS_DIR, fname)
+    with open(path, "wb") as f:
+        f.write(img_data)
+    return f"{ASSETS_DIR}/{fname}"
 
-def ask_url(topic: str) -> str:
-    r = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": URL_FINDER},
-                  {"role": "user", "content": topic}],
-        temperature=0.1, max_tokens=180
+def generate_article_content(topic, source_text):
+    prompt = (
+        f"Write an approximately {ARTICLE_MIN_WORDS} word newspaper-style news article "
+        f"based on the following recent information, but in the tone of a crime desk reporter "
+        f"who is also a skeptical conspiracy theorist. Maintain journalistic structure, "
+        f"clear paragraphs, and factual reporting style, but let subtle skepticism about official "
+        f"narratives show through in wording and detail selection.\n\n"
+        f"Topic: {topic}\n\n"
+        f"Source info:\n{source_text}\n"
     )
-    return r.choices[0].message.content.strip()
-
-def write_article(url: str) -> Dict:
-    r = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": SYSTEM_STYLE},
-                  {"role": "user", "content": ARTICLE_PROMPT.format(url=url)}],
-        temperature=0.25, max_tokens=2200
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+        },
+        timeout=60
     )
-    text = r.choices[0].message.content.strip()
-    m = re.search(r'\{.*\}\s*$', text, re.S)
-    return json.loads(m.group(0) if m else text)
+    r.raise_for_status()
+    content = r.json()["choices"][0]["message"]["content"]
+    return content
 
-# ===== Unsplash (uses existing UNSPLASH_KEY) =====
-UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
-def unsplash_image(query: str) -> Optional[str]:
-    if not UNSPLASH_KEY: return None
-    try:
-        r = requests.get(
-            "https://api.unsplash.com/photos/random",
-            headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
-            params={"query": query, "orientation": "landscape"},
-            timeout=20
-        )
-        r.raise_for_status()
-        data = r.json()
-        return data.get("urls", {}).get("regular")
-    except Exception as e:
-        print("Unsplash error:", e)
-        return None
+def fetch_trending_terms():
+    xml_text = fetch_google_news("trending")
+    items = parse_rss(xml_text)
+    terms = list({re.sub(r'[^A-Za-z0-9 ]+', '', a["title"]).strip() for a in items})[:10]
+    return terms
 
-def download_image(url: str, filename_hint: str) -> str:
-    try:
-        ASSETS.mkdir(exist_ok=True, parents=True)
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        ext = ".jpg"
-        if "image/png" in resp.headers.get("Content-Type",""):
-            ext = ".png"
-        fname = f"{filename_hint}{ext}"
-        path = ASSETS / fname
-        with open(path, "wb") as f:
-            f.write(resp.content)
-        return f"assets/{fname}"
-    except Exception as e:
-        print("Image download error:", e)
-        return FALLBACK if (BASE / FALLBACK).exists() else ""
-
-def get_story_image(queries: List[str], title_slug: str) -> str:
-    for q in queries[:3]:
-        url = unsplash_image(q)
-        if url:
-            return download_image(url, f"{title_slug}")
-    return FALLBACK if (BASE / FALLBACK).exists() else ""
-
-# ===== RSS utilities (Google News) =====
-def google_news_rss(query: Optional[str]=None, limit:int=20) -> List[Dict]:
-    if query:
-        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
-    else:
-        url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-    try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        root = ET.fromstring(r.text)
-        items = []
-        for item in root.findall(".//item")[:limit]:
-            title = item.findtext("title") or ""
-            link = item.findtext("link") or ""
-            items.append({"title": title.strip(), "link": link.strip()})
-        return items
-    except Exception as e:
-        print("RSS error:", e)
-        return []
-
-# ===== Weather (Open-Meteo, no key) =====
-def toronto_weather() -> str:
-    # Toronto approx lat/long
+def fetch_weather_toronto():
     url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": 43.65107,
-        "longitude": -79.347015,
-        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min",
-        "timezone": "America/Toronto"
-    }
-    try:
-        r = requests.get(url, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        cur = data.get("current", {})
-        daily = data.get("daily", {})
-        t = cur.get("temperature_2m")
-        feels = cur.get("apparent_temperature")
-        wind = cur.get("wind_speed_10m")
-        tmax = daily.get("temperature_2m_max", ["?"])[0]
-        tmin = daily.get("temperature_2m_min", ["?"])[0]
-        return f"{t}°C (feels {feels}°C), wind {wind} km/h · Today {tmin}°/{tmax}°"
-    except Exception as e:
-        print("Weather error:", e)
-        return "Weather unavailable"
+    params = {"latitude": 43.7, "longitude": -79.42, "current_weather": True}
+    r = requests.get(url, params=params, timeout=10)
+    if r.status_code != 200:
+        return None
+    data = r.json().get("current_weather", {})
+    return f"{data.get('temperature')}°C, {data.get('windspeed')} km/h wind" if data else None
 
-# ===== Rendering & index injections =====
-def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str:
-    html = ARTICLE_TPL.read_text(encoding="utf-8")
-    tpl = Template(html)
-    return tpl.render(
-        title=payload.get("title", "Untitled"),
-        meta_description=payload.get("meta_description", ""),
-        body=payload.get("body_html", ""),
-        hero=hero_rel_for_article,
-        images=[],
-        timestamp=ts_utc
+# === MAIN ===
+def main():
+    existing_fps = load_existing_fingerprints()
+    all_articles = []
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            all_articles = json.load(f)
+
+    cutoff = datetime.utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
+    new_items = []
+
+    for topic in INTERESTS:
+        xml_text = fetch_google_news(topic)
+        for art in parse_rss(xml_text):
+            if art["date"] < cutoff:
+                continue
+            fp = fingerprint(art["title"], art["link"])
+            if fp in existing_fps:
+                continue
+            img_path = fetch_unsplash_image(topic)
+            try:
+                body = generate_article_content(topic, f"{art['title']} - {art['link']}")
+            except Exception as e:
+                print(f"OpenAI error: {e}")
+                continue
+            filename = f"{slugify(art['title'])}.html"
+            file_path = os.path.join("articles", filename)
+            tmpl = env.get_template("article.html.j2")
+            html_content = tmpl.render(
+                title=art["title"],
+                meta_description=art["title"],
+                hero=f"../{img_path}",
+                body=body,
+                timestamp=art["date"].strftime("%B %d, %Y"),
+            )
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            entry = {
+                "title": art["title"],
+                "href": f"articles/{filename}",
+                "image": img_path,
+                "date": art["date"].strftime("%b %d, %Y"),
+                "file": filename,
+                "fingerprint": fp
+            }
+            all_articles.insert(0, entry)
+            existing_fps.add(fp)
+            new_items.append(entry)
+
+    save_data(all_articles)
+
+    # Homepage render
+    trending_terms = fetch_trending_terms()
+    weather = fetch_weather_toronto()
+    latest = all_articles[:8]
+    main_slider = latest[:5]
+
+    slider_html = "\n".join(
+        f"<a class='slide' href='articles/{m['file']}' style=\"background-image:url('{m['image']}')\">"
+        f"<div class='slide-content'><h2 class='slide-headline'>{html.escape(m['title'])}</h2></div></a>"
+        for m in main_slider
     )
 
-def replace_block(html: str, start_tag: str, end_tag: str, inner: str) -> str:
-    block = f"{start_tag}\n{inner}\n{end_tag}"
-    return re.sub(re.escape(start_tag) + r".*?" + re.escape(end_tag), block, html, flags=re.S)
-
-def update_index(slides_html: str, headlines_html: str, ticker_text: str, trending_html: str, weather_text: str):
-    html = INDEX.read_text(encoding="utf-8")
-    html = replace_block(html, "<!--SLIDES-->", "<!--/SLIDES-->", slides_html)
-    html = replace_block(html, "<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
-    html = replace_block(html, "<!--TICKER-->", "<!--/TICKER-->", ticker_text)
-    html = replace_block(html, "<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
-    html = replace_block(html, "<!--WEATHER-->", "<!--/WEATHER-->", weather_text)
-    INDEX.write_text(html, encoding="utf-8")
-
-def render_archive(manifest: List[Dict]):
-    tpl = Template(ARCHIVE_TPL.read_text(encoding="utf-8"))
-    articles = [{
-        "href": f"./{m['file']}",
-        "title": m["title"],
-        "image": m.get("image", FALLBACK),
-        "date": m["date"]
-    } for m in sorted(manifest, key=lambda x: x["date"], reverse=True)]
-    out = tpl.render(articles=articles)
-    ART_DIR.mkdir(exist_ok=True, parents=True)
-    (ART_DIR / "index.html").write_text(out, encoding="utf-8")
-
-def load_manifest() -> List[Dict]:
-    if MANIFEST.exists():
-        try:
-            return json.loads(MANIFEST.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-    return []
-
-def save_manifest(items: List[Dict]):
-    MANIFEST.write_text(json.dumps(items, indent=2), encoding="utf-8")
-
-# ===== Main =====
-def main():
-    ART_DIR.mkdir(exist_ok=True, parents=True)
-    manifest = load_manifest()
-    seen_fps = {m.get("fp") for m in manifest if m.get("fp")}
-
-    created: List[Dict] = []
-    topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
-
-    for topic in topics:
-        try:
-            source_url = ask_url(topic)
-            payload = write_article(source_url)
-            title = (payload.get("title") or "Untitled").strip()
-            fp = fingerprint(source_url, title)
-            if fp in seen_fps:
-                print("Duplicate skipped:", title)
-                continue
-
-            slug = slugify(title)
-            ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-            queries = payload.get("image_queries") or [title, topic]
-            hero_repo_rel = get_story_image(queries, slug)
-            hero_rel_for_article = "../" + hero_repo_rel if hero_repo_rel.startswith("assets/") else "../" + hero_repo_rel.lstrip("./")
-
-            html = render_article(payload, hero_rel_for_article, ts)
-            filename = f"{slug}.html"
-            (ART_DIR / filename).write_text(html, encoding="utf-8")
-
-            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts, "source_url": source_url, "fp": fp}
-            manifest.append(item)
-            created.append(item)
-            seen_fps.add(fp)
-        except Exception as e:
-            print("Error generating:", e)
-
-    if created:
-        save_manifest(manifest)
-        render_archive(manifest)
-
-    latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
-    slides = [
-        f"<a class=\\"slide\\" href=\\"articles/{m['file']}\\\" style=\\"background-image:url('{m['image']}')\\">"
-        f"<div class=\\"slide-content\\"><div class='kicker'>Top Story</div><h2 class=\\"slide-headline\\">{m['title']}</h2></div></a>"
-        for m in latest
-    ]
-    headlines_src = sorted(manifest, key=lambda x: x["date"], reverse=True)[:HEADLINES_COUNT]
-    headlines = [f"<li><a href=\\"articles/{m['file']}\\">{m['title']}</a></li>" for m in headlines_src]
-
-    ticker_items: List[str] = []
-    for t in INTERESTS:
-        for itm in google_news_rss(t, limit=2):
-            ticker_items.append(itm["title"])
-            if len(ticker_items) >= TICKER_COUNT: break
-        if len(ticker_items) >= TICKER_COUNT: break
-    ticker_text = " · ".join(ticker_items) if ticker_items else "Fresh updates every cycle."
-
-    trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
-    trending_html = "\\n".join([f"<li><a href=\\"{i['link']}\\\" target=\\"_blank\\" rel=\\"noopener\\">{i['title']}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
-
-    weather_text = toronto_weather()
-
-    update_index("\\n".join(slides), "\\n".join(headlines), ticker_text, trending_html, weather_text)
+    tmpl_home = env.get_template("index.html")
+    home_html = tmpl_home.render(
+        slider_html=slider_html,
+        latest_articles=latest,
+        trending_terms=trending_terms,
+        weather=weather,
+        generated=datetime.utcnow().strftime("%B %d, %Y %H:%M UTC"),
+    )
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(home_html)
 
 if __name__ == "__main__":
     main()
