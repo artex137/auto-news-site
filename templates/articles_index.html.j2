@@ -27,7 +27,8 @@
       <div class="cards">
         {% for a in articles %}
           <a class="card" href="{{ a.href }}">
-            <div class="card-media" style="background-image:url('{{ a.image }}')"></div>
+            <!-- NOTE: prefix ../ because this page lives in /articles/ -->
+            <div class="card-media" style="background-image:url('../{{ a.image }}')"></div>
             <div class="card-body">
               <h4 class="card-title">{{ a.title }}</h4>
               <div class="card-meta">{{ a.date }}</div>
