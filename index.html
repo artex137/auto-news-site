@@ -3,17 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Search 433 — Fresh Reporting</title>
-  <meta name="description" content="Search 433 — ultra‑modern, mobile‑first automated news with a permanent article archive.">
+  <title>Search 433 — Live Headlines & Latest</title>
+  <meta name="description" content="Search 433 — mobile-first automated news with a live homepage and permanent archive.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
   <script defer src="slider.js"></script>
+  <script>
+    // tiny clock for the right-rail "Now" panel
+    document.addEventListener('DOMContentLoaded',()=>{
+      const el = document.getElementById('clock');
+      const tz  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const fmt = new Intl.DateTimeFormat([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      const dateFmt = new Intl.DateTimeFormat([], {weekday:'short', month:'short', day:'2-digit'});
+      function tick(){
+        const d=new Date();
+        el.innerHTML = `<div class="now-time">${fmt.format(d)}</div><div class="now-date">${dateFmt.format(d)} · ${tz}</div>`;
+      }
+      tick(); setInterval(tick,1000);
+    });
+  </script>
 </head>
 <body class="theme-light">
+  <!-- Top bar -->
   <header class="site-header">
     <div class="container row between middle">
+      <!-- New minimal logo -->
       <a class="brand" href="index.html" aria-label="Search 433">
         <span class="crest">433</span>
         <span class="brand-text"><em>Search</em> 433</span>
@@ -25,46 +41,90 @@
     </div>
   </header>
 
-  <!-- HERO / SLIDER -->
-  <section class="hero">
-    <div class="container">
-      <div class="slider" data-autoplay="7000">
-        <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
-        <div class="slides">
-          <!--SLIDES-->
-<a class="slide" href="articles/understanding-multi-timeframe-analysis-in-crypto-trading.html" style="background-image:url('assets/understanding-multi-timeframe-analysis-in-crypto-trading.jpg')"><div class="slide-content"><h2 class="slide-headline">Understanding Multi-Timeframe Analysis in Crypto Trading</h2></div></a>
-<a class="slide" href="articles/new-policy-update-aims-to-strengthen-privacy-amid-growing-su.html" style="background-image:url('assets/new-policy-update-aims-to-strengthen-privacy-amid-growing-su.jpg')"><div class="slide-content"><h2 class="slide-headline">New Policy Update Aims to Strengthen Privacy Amid Growing Surveillance Concerns</h2></div></a>
-<a class="slide" href="articles/stock-market-algorithms-transforming-investor-trading-strate.html" style="background-image:url('assets/stock-market-algorithms-transforming-investor-trading-strate.jpg')"><div class="slide-content"><h2 class="slide-headline">Stock Market Algorithms Transforming Investor Trading Strategies</h2></div></a>
-<a class="slide" href="articles/new-study-reveals-impact-of-climate-change-on-global-food-se.html" style="background-image:url('assets/new-study-reveals-impact-of-climate-change-on-global-food-se.jpg')"><div class="slide-content"><h2 class="slide-headline">New Study Reveals Impact of Climate Change on Global Food Security</h2></div></a>
-<!--/SLIDES-->
+  <!-- Primary grid -->
+  <section class="frontgrid">
+    <div class="container grid-outer">
+      <!-- Main well (slider + latest cards) -->
+      <div class="grid-main">
+        <!-- Slider in the "main video" slot -->
+        <div class="slider card" data-autoplay="7000">
+          <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
+          <div class="slides">
+            <!--SLIDES-->
+            <!-- Default placeholder; generator replaces this whole block -->
+            <a class="slide" href="articles/index.html" style="background-image:url('assets/fallback-hero.jpg')">
+              <div class="slide-content">
+                <h2 class="slide-headline">Welcome to Search 433 — live headlines with a permanent archive.</h2>
+              </div>
+            </a>
+            <!--/SLIDES-->
+          </div>
+          <button class="slider-btn next" aria-label="Next">&#10095;</button>
+          <div class="dots" aria-hidden="true"></div>
         </div>
-        <button class="slider-btn next" aria-label="Next">&#10095;</button>
-        <div class="dots" aria-hidden="true"></div>
+
+        <!-- Latest cards (optional manual links, or leave as archive CTA) -->
+        <div class="cards mt-16">
+          <a class="card" href="articles/index.html">
+            <div class="card-media" style="background-image:url('assets/fallback-card.jpg')"></div>
+            <div class="card-body">
+              <h4 class="card-title">Browse the full archive</h4>
+              <div class="card-meta">Newest to oldest · Updated automatically</div>
+            </div>
+          </a>
+        </div>
       </div>
+
+      <!-- Right rail -->
+      <aside class="grid-rail">
+        <div class="rail-block card">
+          <div class="rail-title">Now</div>
+          <div id="clock" class="rail-now">—:—</div>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Trending</div>
+          <ul class="rail-list">
+            <!--GEN-TRENDING-->
+            <li>#911 theories</li>
+            <li>#false flags</li>
+            <li>#aliens</li>
+            <li>#comet 3I/ATLAS</li>
+            <li>#UFOs</li>
+            <li>#Joe Rogan</li>
+            <li>#President Trump</li>
+            <!--/GEN-TRENDING-->
+          </ul>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Latest Headlines</div>
+          <ul class="rail-list">
+            <!--HEADLINES-->
+            <li><a href="articles/index.html">Archive — see all stories →</a></li>
+            <!--/HEADLINES-->
+          </ul>
+        </div>
+      </aside>
     </div>
   </section>
 
-  <!-- LATEST GRID -->
-  <main class="section">
-    <div class="container">
-      <h3 class="section-title">Latest</h3>
-      <div class="cards" id="latest-cards">
-        <!-- Filled by generator when building Articles page (optional progressive enhancement) -->
-        <a class="card" href="articles/index.html">
-          <div class="card-media" style="background-image:url('assets/fallback-card.jpg')"></div>
-          <div class="card-body">
-            <h4 class="card-title">Browse the full archive</h4>
-            <div class="card-meta">See all stories →</div>
-          </div>
-        </a>
-      </div>
+  <!-- Ticker strip -->
+  <section class="ticker">
+    <div class="container ticker-inner">
+      <span class="tick-label">LIVE</span>
+      <marquee behavior="scroll" direction="left" scrollamount="6">
+        <!--TICKER-->
+        Fresh updates every cycle · No duplicates · Topics: 911 theories · false flags · aliens · comet 3I/ATLAS · UFOs · Joe Rogan podcasts · President Trump
+        <!--/TICKER-->
+      </marquee>
     </div>
-  </main>
+  </section>
 
   <footer class="site-footer">
     <div class="container row between wrap">
       <p>© <span id="y"></span> Search 433</p>
-      <p class="muted">Automated updates. Articles are preserved in the archive.</p>
+      <p class="muted">Automated reporting. Articles are preserved in the archive.</p>
     </div>
     <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
   </footer>
