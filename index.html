@@ -1,88 +1,129 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Search 433 - Your source for the latest curated news.">
-  <title>Search 433</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Search 433 — Live Headlines & Latest</title>
+  <meta name="description" content="Search 433 — mobile-first automated news with a live homepage and permanent archive.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
   <script defer src="slider.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded',()=>{
+      const el = document.getElementById('clock');
+      if(!el) return;
+      const tz  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const fmt = new Intl.DateTimeFormat([], {hour:'2-digit', minute:'2-digit'});
+      const dateFmt = new Intl.DateTimeFormat([], {weekday:'short', month:'short', day:'2-digit'});
+      function tick(){
+        const d=new Date();
+        el.innerHTML = `<div class="now-time">${fmt.format(d)}</div><div class="now-date">${dateFmt.format(d)} · ${tz}</div>`;
+      }
+      tick(); setInterval(tick,30000);
+    });
+  </script>
 </head>
-<body>
-  <!-- HEADER -->
+<body class="theme-darkblue">
+  <!-- Header (consistent across pages) -->
   <header class="site-header">
-    <div class="logo">
-      <a href="index.html">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" class="logo-svg">
-          <text x="0" y="70" font-size="72" font-family="Arial Black" fill="#1e3a8a">Search</text>
-          <text x="280" y="70" font-size="72" font-family="Arial Black" fill="#2563eb">433</text>
+    <div class="container row between middle">
+      <a class="brand" href="index.html" aria-label="Search 433">
+        <svg class="logo-svg" viewBox="0 0 160 40" width="160" height="40" aria-hidden="true">
+          <defs>
+            <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7fb2ff"/>
+              <stop offset="100%" stop-color="#2f6fff"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" rx="10" ry="10" width="52" height="40" fill="url(#g433)"></rect>
+          <text x="26" y="26" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
+          <text x="64" y="26" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
         </svg>
       </a>
+      <nav class="nav">
+        <a href="index.html" class="nav-link active">Home</a>
+        <a href="articles/index.html" class="nav-link">Articles</a>
+      </nav>
     </div>
-    <nav class="main-nav">
-      <a href="index.html">Home</a>
-      <a href="articles_index.html">Articles</a>
-      <a href="#">About</a>
-      <a href="#">Contact</a>
-    </nav>
   </header>
 
-  <!-- WEATHER & TIME -->
-  <section class="top-bar">
-    <div class="datetime">
-      <span id="current-time"></span> | Toronto Weather: <!--WEATHER-->Loading...<!--/WEATHER-->
+  <!-- Primary grid -->
+  <section class="frontgrid">
+    <div class="container grid-outer">
+      <!-- Main well -->
+      <div class="grid-main">
+        <!-- Slider -->
+        <div class="slider card" data-autoplay="7000">
+          <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
+          <div class="slides">
+            <!--SLIDES-->
+            <a class="slide" href="articles/index.html" style="background-image:url('assets/fallback-hero.jpg')">
+              <div class="slide-content">
+                <div class="kicker">Top Story</div>
+                <h2 class="slide-headline">Welcome to Search 433 — live headlines with a permanent archive.</h2>
+              </div>
+            </a>
+            <!--/SLIDES-->
+          </div>
+          <button class="slider-btn next" aria-label="Next">&#10095;</button>
+          <div class="dots" aria-hidden="true"></div>
+        </div>
+
+        <!-- Ticker directly under slider -->
+        <section class="ticker">
+          <div class="ticker-inner card">
+            <span class="tick-label">LIVE</span>
+            <marquee behavior="scroll" direction="left" scrollamount="6">
+              <!--TICKER-->
+              Loading latest headlines…
+              <!--/TICKER-->
+            </marquee>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right rail (widened so Latest Headlines is fully visible) -->
+      <aside class="grid-rail">
+        <div class="rail-block card">
+          <div class="rail-title">Now</div>
+          <div id="clock" class="rail-now">—:—</div>
+          <div class="rail-title" style="border-top:1px solid var(--line)">Toronto Weather</div>
+          <div class="rail-now">
+            <!--WEATHER-->
+            Fetching weather…
+            <!--/WEATHER-->
+          </div>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Latest Headlines</div>
+          <ul class="rail-list">
+            <!--HEADLINES-->
+            <li><a href="articles/index.html">Archive — see all stories →</a></li>
+            <!--/HEADLINES-->
+          </ul>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Trending Now</div>
+          <ul class="rail-list">
+            <!--TRENDING-->
+            <li>Loading…</li>
+            <!--/TRENDING-->
+          </ul>
+        </div>
+      </aside>
     </div>
   </section>
 
-  <!-- SLIDER -->
-  <section class="slider-container">
-    <!--SLIDES-->
-    <div class="slide placeholder">Loading slider...</div>
-    <!--/SLIDES-->
-  </section>
-
-  <!-- NEWS TICKER -->
-  <section class="news-ticker">
-    <div class="ticker-title">Breaking</div>
-    <div class="ticker-content">
-      <!--TICKER-->Loading breaking news...<!--/TICKER-->
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>© <span id="y"></span> Search 433</p>
+      <p class="muted">Automated reporting. Articles are preserved in the archive.</p>
     </div>
-  </section>
-
-  <main class="content-wrapper">
-    <!-- MAIN COLUMN -->
-    <section class="main-column">
-      <h2>Latest Headlines</h2>
-      <ul class="latest-headlines">
-        <!--HEADLINES-->
-        <li>Loading headlines...</li>
-        <!--/HEADLINES-->
-      </ul>
-    </section>
-
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-      <h2>Trending Now</h2>
-      <ul class="trending-list">
-        <!--TRENDING-->
-        <li>Loading trends...</li>
-        <!--/TRENDING-->
-      </ul>
-    </aside>
-  </main>
-
-  <footer>
-    <p>&copy; <span id="year"></span> Search 433. All Rights Reserved.</p>
+    <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
   </footer>
-
-  <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-    function updateTime(){
-      const now = new Date();
-      document.getElementById('current-time').textContent = now.toLocaleString();
-    }
-    setInterval(updateTime, 1000);
-    updateTime();
-  </script>
 </body>
 </html>
