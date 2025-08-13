@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Articles — Search 433</title>
+  <meta name="description" content="Browse every article published by Search 433.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container row between middle">
+      <a class="brand" href="../index.html"><span class="crest">433</span><span class="brand-text"><em>Search</em> 433</span></a>
+      <nav class="nav">
+        <a href="../index.html" class="nav-link">Home</a>
+        <a href="./index.html" class="nav-link active">Articles</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1 class="section-title">Articles</h1>
+      <div class="cards">
+        {% for a in articles %}
+          <a class="card" href="{{ a.href }}">
+            <div class="card-media" style="background-image:url('{{ a.image }}')"></div>
+            <div class="card-body">
+              <h4 class="card-title">{{ a.title }}</h4>
+              <div class="card-meta">{{ a.date }}</div>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>© <script>document.write(new Date().getFullYear())</script> Search 433</p>
+      <p class="muted">Permanent archive.</p>
+    </div>
+  </footer>
+</body>
+</html>
