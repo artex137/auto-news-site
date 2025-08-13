@@ -1,7 +1,15 @@
-import os, re, json, random, datetime, pathlib, unicodedata
-from typing import List, Dict
+import os
+import re
+import json
+import random
+import datetime
+import pathlib
+import unicodedata
+from typing import List, Dict, Optional
+
 import requests
 from openai import OpenAI
+from jinja2 import Template
 
 # ===== Config =====
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -18,9 +26,7 @@ ARTICLE_TPL = TPL_DIR / "article.html.j2"
 ARCHIVE_TPL = TPL_DIR / "articles_index.html.j2"
 INDEX = BASE / "index.html"
 
-UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
-
-# Interests (30)
+# Interests list
 INTERESTS = [
     "cosmic ray influence on precognition",
     "MKSEARCH psi experiments",
@@ -56,7 +62,7 @@ INTERESTS = [
 
 NUM_ARTICLES = 4
 SLIDER_LATEST = 4
-FALLBACK = "assets/fallback-hero.jpg"  # relative to repo root
+FALLBACK = "assets/fallback-hero.jpg"
 
 SYSTEM_STYLE = """Write in straight newspaper style (inverted pyramid). Neutral tone, clear sourcing, quotes with attribution.
 Return JSON with: "title", "meta_description", "body_html", "image_queries" (2-3 concise)."""
@@ -74,98 +80,108 @@ Return JSON:
 - "image_queries": 2–3 short phrases for related photos"""
 
 # ===== Helpers =====
-def slugify(value:str, max_len:int=60)->str:
+def slugify(value: str, max_len: int = 60) -> str:
     value = unicodedata.normalize('NFKD', value)
     value = re.sub(r'[^\w\s-]', '', value, flags=re.U).strip().lower()
     value = re.sub(r'[\s_-]+', '-', value)
     return value[:max_len].strip('-') or "article"
 
-def ask_url(topic:str)->str:
+def ask_url(topic: str) -> str:
     r = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role":"system","content":URL_FINDER},
-                  {"role":"user","content":topic}],
-        temperature=0.2, max_tokens=200
+        messages=[{"role": "system", "content": URL_FINDER},
+                  {"role": "user", "content": topic}],
+        temperature=0.2,
+        max_tokens=200
     )
     return r.choices[0].message.content.strip()
 
-def write_article(url:str)->Dict:
+def write_article(url: str) -> Dict:
     r = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role":"system","content":SYSTEM_STYLE},
-                  {"role":"user","content":ARTICLE_PROMPT.format(url=url)}],
-        temperature=0.3, max_tokens=1600
+        messages=[{"role": "system", "content": SYSTEM_STYLE},
+                  {"role": "user", "content": ARTICLE_PROMPT.format(url=url)}],
+        temperature=0.3,
+        max_tokens=1600
     )
     text = r.choices[0].message.content.strip()
     m = re.search(r'\{.*\}\s*$', text, re.S)
     return json.loads(m.group(0) if m else text)
 
-def unsplash(query:str)->str:
-    """Download an Unsplash image and return a repo-root-relative path like 'assets/<file>.jpg'."""
-    if not UNSPLASH_KEY:
-        return FALLBACK
+# ===== Unsplash image fetching =====
+UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
+UNSPLASH_URL = "https://api.unsplash.com/photos/random"
+
+def unsplash_image(query: str) -> Optional[str]:
     try:
-        resp = requests.get(
-            "https://api.unsplash.com/photos/random",
-            params={"query":query,"orientation":"landscape","content_filter":"high"},
-            headers={"Authorization":f"Client-ID {UNSPLASH_KEY}"},
-            timeout=20
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        url = data.get("urls",{}).get("regular")
-        if not url:
-            return FALLBACK
-        img = requests.get(url, timeout=30)
-        img.raise_for_status()
-        ASSETS.mkdir(exist_ok=True, parents=True)
-        fname = f"{data.get('id','img')}.jpg"
-        path = ASSETS / fname
-        with open(path, "wb") as f:
-            f.write(img.content)
-        return f"assets/{fname}"
+        headers = {"Authorization": f"Client-ID {UNSPLASH_KEY}"}
+        params = {"query": query, "orientation": "landscape"}
+        r = requests.get(UNSPLASH_URL, headers=headers, params=params, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("urls", {}).get("regular")
     except Exception as e:
         print("Unsplash error:", e)
-        return FALLBACK
+        return None
 
-def render_article(payload:Dict, hero_rel_for_article:str, ts_utc:str)->str:
-    """Render article page. 'hero_rel_for_article' must be path relative to /articles/ (i.e., '../assets/..')."""
-    from jinja2 import Template
-    with open(ARTICLE_TPL,"r",encoding="utf-8") as f:
-        tpl = Template(f.read())
+def download_image(url: str, filename_hint: str) -> str:
+    try:
+        ASSETS.mkdir(exist_ok=True, parents=True)
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        ext = ".jpg"
+        if "image/png" in resp.headers.get("Content-Type", ""):
+            ext = ".png"
+        fname = f"{filename_hint}{ext}"
+        path = ASSETS / fname
+        with open(path, "wb") as f:
+            f.write(resp.content)
+        return f"assets/{fname}"
+    except Exception as e:
+        print("Image download error:", e)
+        return FALLBACK if (BASE / FALLBACK).exists() else ""
+
+def get_story_image(queries: List[str], title_slug: str) -> str:
+    for q in queries[:3]:
+        url = unsplash_image(q)
+        if url:
+            return download_image(url, f"{title_slug}")
+    if (BASE / FALLBACK).exists():
+        return FALLBACK
+    return ""
+
+# ===== Rendering & pages =====
+def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str:
+    html = ARTICLE_TPL.read_text(encoding="utf-8")
+    tpl = Template(html)
     return tpl.render(
-        title=payload.get("title","Untitled"),
-        meta_description=payload.get("meta_description",""),
-        body=payload.get("body_html",""),
+        title=payload.get("title", "Untitled"),
+        meta_description=payload.get("meta_description", ""),
+        body=payload.get("body_html", ""),
         hero=hero_rel_for_article,
-        images=[],  # optional gallery not used now
+        images=[],
         timestamp=ts_utc
     )
 
-def update_index(slides_html:str):
-    with open(INDEX,"r",encoding="utf-8") as f:
-        html = f.read()
+def update_index(slides_html: str):
+    html = INDEX.read_text(encoding="utf-8")
     block = f"<!--SLIDES-->\n{slides_html}\n<!--/SLIDES-->"
     html = re.sub(r'<!--SLIDES-->.*?<!--/SLIDES-->', block, html, flags=re.S)
-    with open(INDEX,"w",encoding="utf-8") as f:
-        f.write(html)
+    INDEX.write_text(html, encoding="utf-8")
 
-def render_archive(manifest:List[Dict]):
-    from jinja2 import Template
-    with open(ARCHIVE_TPL,"r",encoding="utf-8") as f:
-        tpl = Template(f.read())
+def render_archive(manifest: List[Dict]):
+    tpl = Template(ARCHIVE_TPL.read_text(encoding="utf-8"))
     articles = [{
         "href": f"./{m['file']}",
         "title": m["title"],
-        "image": m.get("image", FALLBACK),  # used with ../ prefix in template
+        "image": m.get("image", FALLBACK),
         "date": m["date"]
     } for m in sorted(manifest, key=lambda x: x["date"], reverse=True)]
     out = tpl.render(articles=articles)
     ART_DIR.mkdir(exist_ok=True, parents=True)
-    with open(ART_DIR / "index.html","w",encoding="utf-8") as f:
-        f.write(out)
+    (ART_DIR / "index.html").write_text(out, encoding="utf-8")
 
-def load_manifest()->List[Dict]:
+def load_manifest() -> List[Dict]:
     if MANIFEST.exists():
         try:
             return json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -173,7 +189,7 @@ def load_manifest()->List[Dict]:
             return []
     return []
 
-def save_manifest(items:List[Dict]):
+def save_manifest(items: List[Dict]):
     MANIFEST.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
 # ===== Main =====
@@ -191,23 +207,17 @@ def main():
             slug = slugify(title)
             ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-            # Images: repo-root-relative paths like 'assets/abc.jpg'
-            queries = payload.get("image_queries") or [title]
-            images = [unsplash(q) for q in queries[:3] if q]
-            hero_repo_rel = images[0] if images else FALLBACK
+            queries = payload.get("image_queries") or [title, topic]
+            hero_repo_rel = get_story_image(queries, slug)
 
-            # Article page lives in /articles/, so hero must be '../assets/...'
             if hero_repo_rel.startswith("assets/"):
                 hero_rel_for_article = "../" + hero_repo_rel
             else:
-                # safety: keep relative
                 hero_rel_for_article = "../" + hero_repo_rel.lstrip("./")
 
-            # Render + save permanent article
             html = render_article(payload, hero_rel_for_article, ts)
             filename = f"{slug}.html"
-            with open(ART_DIR / filename, "w", encoding="utf-8") as f:
-                f.write(html)
+            (ART_DIR / filename).write_text(html, encoding="utf-8")
 
             item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts}
             manifest.append(item)
@@ -219,8 +229,6 @@ def main():
     if created:
         save_manifest(manifest)
         render_archive(manifest)
-
-        # Update homepage slider with latest N (index.html is at repo root => use repo-root-relative)
         latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
         slides = [
             f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
