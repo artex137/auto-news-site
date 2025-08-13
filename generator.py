@@ -1,12 +1,5 @@
-import os
-import re
-import json
-import random
-import datetime
-import pathlib
-import unicodedata
+import os, re, json, random, datetime, pathlib, unicodedata
 from typing import List, Dict, Optional
-
 import requests
 from openai import OpenAI
 from jinja2 import Template
@@ -26,42 +19,20 @@ ARTICLE_TPL = TPL_DIR / "article.html.j2"
 ARCHIVE_TPL = TPL_DIR / "articles_index.html.j2"
 INDEX = BASE / "index.html"
 
-# Interests list
+# Topics (your new list)
 INTERESTS = [
-    "cosmic ray influence on precognition",
-    "MKSEARCH psi experiments",
-    "AI policy and safety",
-    "cryptocurrency regulation",
-    "Bitcoin market trends",
-    "multi-timeframe crypto trading",
-    "order flow analysis in markets",
-    "Comet 3I/ATLAS trajectory",
-    "UFO/UAP government disclosures",
-    "sacred geometry in architecture",
-    "occult symbolism in politics",
-    "quantum computing breakthroughs",
-    "esoteric numerology and 137",
-    "AI in automated journalism",
-    "high-altitude particle experiments",
-    "free energy research developments",
-    "space exploration missions",
-    "clean energy breakthroughs",
-    "metaphysical event predictions",
-    "geopolitical tensions in Asia",
-    "privacy & surveillance policy",
-    "off-grid living in Alaska",
-    "predictive programming in media",
-    "ancient measurement systems",
-    "lunar and solar cycles",
-    "stock market algorithmic trading",
-    "deep sea exploration news",
-    "volcanic activity and climate",
-    "AI safety & governance",
-    "macro economics and rates"
+    "911 theories",
+    "false flags",
+    "aliens",
+    "comet 3i atlas",
+    "ufos",
+    "joe rogan podcasts",
+    "president trump"
 ]
 
 NUM_ARTICLES = 4
 SLIDER_LATEST = 4
+HEADLINES_COUNT = 8
 FALLBACK = "assets/fallback-hero.jpg"
 
 SYSTEM_STYLE = """Write in straight newspaper style (inverted pyramid). Neutral tone, clear sourcing, quotes with attribution.
@@ -91,8 +62,7 @@ def ask_url(topic: str) -> str:
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": URL_FINDER},
                   {"role": "user", "content": topic}],
-        temperature=0.2,
-        max_tokens=200
+        temperature=0.2, max_tokens=200
     )
     return r.choices[0].message.content.strip()
 
@@ -101,22 +71,23 @@ def write_article(url: str) -> Dict:
         model="gpt-4o-mini",
         messages=[{"role": "system", "content": SYSTEM_STYLE},
                   {"role": "user", "content": ARTICLE_PROMPT.format(url=url)}],
-        temperature=0.3,
-        max_tokens=1600
+        temperature=0.3, max_tokens=1600
     )
     text = r.choices[0].message.content.strip()
     m = re.search(r'\{.*\}\s*$', text, re.S)
     return json.loads(m.group(0) if m else text)
 
-# ===== Unsplash image fetching =====
+# ===== Unsplash =====
 UNSPLASH_KEY = os.getenv("UNSPLASH_KEY")
-UNSPLASH_URL = "https://api.unsplash.com/photos/random"
-
 def unsplash_image(query: str) -> Optional[str]:
+    if not UNSPLASH_KEY: return None
     try:
-        headers = {"Authorization": f"Client-ID {UNSPLASH_KEY}"}
-        params = {"query": query, "orientation": "landscape"}
-        r = requests.get(UNSPLASH_URL, headers=headers, params=params, timeout=20)
+        r = requests.get(
+            "https://api.unsplash.com/photos/random",
+            headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
+            params={"query": query, "orientation": "landscape"},
+            timeout=20
+        )
         r.raise_for_status()
         data = r.json()
         return data.get("urls", {}).get("regular")
@@ -130,7 +101,7 @@ def download_image(url: str, filename_hint: str) -> str:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         ext = ".jpg"
-        if "image/png" in resp.headers.get("Content-Type", ""):
+        if "image/png" in resp.headers.get("Content-Type",""):
             ext = ".png"
         fname = f"{filename_hint}{ext}"
         path = ASSETS / fname
@@ -146,11 +117,9 @@ def get_story_image(queries: List[str], title_slug: str) -> str:
         url = unsplash_image(q)
         if url:
             return download_image(url, f"{title_slug}")
-    if (BASE / FALLBACK).exists():
-        return FALLBACK
-    return ""
+    return FALLBACK if (BASE / FALLBACK).exists() else ""
 
-# ===== Rendering & pages =====
+# ===== Rendering & index injections =====
 def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str:
     html = ARTICLE_TPL.read_text(encoding="utf-8")
     tpl = Template(html)
@@ -163,10 +132,14 @@ def render_article(payload: Dict, hero_rel_for_article: str, ts_utc: str) -> str
         timestamp=ts_utc
     )
 
-def update_index(slides_html: str):
+def replace_block(html: str, start_tag: str, end_tag: str, inner: str) -> str:
+    block = f"{start_tag}\n{inner}\n{end_tag}"
+    return re.sub(re.escape(start_tag) + r".*?" + re.escape(end_tag), block, html, flags=re.S)
+
+def update_index(slides_html: str, headlines_html: str):
     html = INDEX.read_text(encoding="utf-8")
-    block = f"<!--SLIDES-->\n{slides_html}\n<!--/SLIDES-->"
-    html = re.sub(r'<!--SLIDES-->.*?<!--/SLIDES-->', block, html, flags=re.S)
+    html = replace_block(html, "<!--SLIDES-->", "<!--/SLIDES-->", slides_html)
+    html = replace_block(html, "<!--HEADLINES-->", "<!--/HEADLINES-->", headlines_html)
     INDEX.write_text(html, encoding="utf-8")
 
 def render_archive(manifest: List[Dict]):
@@ -192,36 +165,44 @@ def load_manifest() -> List[Dict]:
 def save_manifest(items: List[Dict]):
     MANIFEST.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
-# ===== Main =====
+# ===== Main (with duplicate protection) =====
 def main():
     ART_DIR.mkdir(exist_ok=True, parents=True)
     manifest = load_manifest()
-    created = []
+    seen_urls = {m.get("source_url","") for m in manifest if m.get("source_url")}
+    seen_titles = {m["title"] for m in manifest}
 
+    created: List[Dict] = []
     topics = random.sample(INTERESTS, k=min(NUM_ARTICLES, len(INTERESTS)))
+
     for topic in topics:
         try:
             url = ask_url(topic)
+            if url in seen_urls:
+                print("Duplicate URL skipped:", url)
+                continue
+
             payload = write_article(url)
             title = (payload.get("title") or "Untitled").strip()
+            if title in seen_titles:
+                print("Duplicate title skipped:", title)
+                continue
+
             slug = slugify(title)
             ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
             queries = payload.get("image_queries") or [title, topic]
             hero_repo_rel = get_story_image(queries, slug)
-
-            if hero_repo_rel.startswith("assets/"):
-                hero_rel_for_article = "../" + hero_repo_rel
-            else:
-                hero_rel_for_article = "../" + hero_repo_rel.lstrip("./")
+            hero_rel_for_article = "../" + hero_repo_rel if hero_repo_rel.startswith("assets/") else "../" + hero_repo_rel.lstrip("./")
 
             html = render_article(payload, hero_rel_for_article, ts)
             filename = f"{slug}.html"
             (ART_DIR / filename).write_text(html, encoding="utf-8")
 
-            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts}
+            item = {"title": title, "file": filename, "image": hero_repo_rel, "date": ts, "source_url": url}
             manifest.append(item)
             created.append(item)
+            seen_urls.add(url); seen_titles.add(title)
 
         except Exception as e:
             print("Error generating:", e)
@@ -229,13 +210,19 @@ def main():
     if created:
         save_manifest(manifest)
         render_archive(manifest)
+
         latest = sorted(manifest, key=lambda x: x["date"], reverse=True)[:SLIDER_LATEST]
         slides = [
             f"<a class=\"slide\" href=\"articles/{m['file']}\" style=\"background-image:url('{m['image']}')\">"
             f"<div class=\"slide-content\"><h2 class=\"slide-headline\">{m['title']}</h2></div></a>"
             for m in latest
         ]
-        update_index("\n".join(slides))
+
+        # Build right-rail headlines
+        headlines_src = sorted(manifest, key=lambda x: x["date"], reverse=True)[:HEADLINES_COUNT]
+        headlines = [f"<li><a href=\"articles/{m['file']}\">{m['title']}</a></li>" for m in headlines_src]
+
+        update_index("\n".join(slides), "\n".join(headlines))
 
 if __name__ == "__main__":
     main()
