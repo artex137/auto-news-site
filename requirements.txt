@@ -5,3 +5,4 @@ gitpython
 beautifulsoup4
 lxml
 readability-lxml
+youtube-transcript-api
