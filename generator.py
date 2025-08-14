@@ -9,9 +9,10 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set
 from urllib.parse import urlparse
+import difflib
 import requests
 try:
-    from bs4 import BeautifulSoup  # optional; for richer source parsing
+    from bs4 import BeautifulSoup  # optional
 except Exception:
     BeautifulSoup = None
 from jinja2 import Template
@@ -26,26 +27,26 @@ ASSETS   = os.path.join(BASE, "assets")
 DATA_DIR = os.path.join(BASE, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 MANIFEST = os.path.join(DATA_DIR, "articles.json")
+INTERESTS_FILE = os.path.join(DATA_DIR, "interests.txt")
 
 TPL_DIR       = os.path.join(BASE, "templates")
 ARTICLE_TPL   = os.path.join(TPL_DIR, "article.html.j2")
 ARCHIVE_TPL   = os.path.join(TPL_DIR, "articles_index.html.j2")
 INDEX         = os.path.join(BASE, "index.html")
 
-# Expanded interests (news-y, conspiracy-adjacent)
-INTERESTS = [
-    "UAP disclosure", "UFO hearings", "AARO", "NASA UAP panel", "Area 51", "Roswell incident",
-    "Phoenix Lights", "Tic Tac UFO", "Skinwalker Ranch",
-    "Project Blue Beam", "MKUltra", "COINTELPRO", "Operation Northwoods", "Operation Mockingbird",
-    "black budget programs", "DARPA projects", "surveillance state", "mass data collection",
-    "facial recognition policy", "whistleblower", "deep state", "Bilderberg", "Skull and Bones",
-    "WEF criticism", "Epstein case", "Ghislaine Maxwell", "Assange extradition",
-    "geoengineering", "HAARP", "weather modification", "FEMA emergency planning",
-    "digital ID", "CBDC policy", "censorship and moderation", "misinformation policy",
-    "false flag debate", "military industrial complex",
+# Fallback interests if interests.txt is missing
+DEFAULT_INTERESTS = [
+    "911 theories",
+    "false flags",
+    "aliens",
+    "comet 3i atlas",
+    "ufos",
+    "joe rogan podcasts",
+    "president trump",
 ]
 
 NEWS_LOOKBACK_HOURS = 24
+DEDUP_WINDOW_HOURS  = 72   # cross-run same-story suppression window
 NUM_PER_RUN    = 4
 SLIDER_LATEST  = 4
 FEATURED_COUNT = 6
@@ -54,7 +55,7 @@ TRENDING_COUNT = 8
 TICKER_COUNT   = 12
 FALLBACK       = "assets/fallback-hero.jpg"
 
-# Filter: exclude obvious ads/retail
+# Exclude ads/retail
 RETAIL_DOMAINS = {
     "amazon.com","amazon.ca","ebay.com","bestbuy.com","bestbuy.ca","walmart.com","walmart.ca",
     "newegg.com","newegg.ca","aliexpress.com","dell.com","alienware.com","lenovo.com","hp.com",
@@ -62,6 +63,75 @@ RETAIL_DOMAINS = {
     "samsung.com","asus.com","msi.com"
 }
 AD_KEYWORDS = {"sale","deal","discount","coupon","buy","order now","% off","save","preorder","pre-order","promo","promo code","sponsored","advertorial","ad:"}
+
+STOPWORDS = {
+    "the","a","an","and","or","but","for","nor","on","in","at","to","from","by","of","with",
+    "as","is","are","was","were","be","been","being","that","this","those","these","it","its",
+    "into","about","after","before","over","under","near","new","latest","breaking","update",
+    "report","reports","says","say","said","reveals","revealed","revealing"
+}
+
+# ===== Time =====
+def as_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+def parse_manifest_dt(s: str) -> Optional[datetime]:
+    try:
+        return datetime.strptime(s, "%Y-%m-%d %H:%M %Z").replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+# ===== Helpers =====
+def slugify(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text or "article"
+
+def fingerprint_key(title: str, url: str) -> str:
+    base = (title or "").strip().lower() + "|" + (url or "").strip().lower()
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()
+
+def load_interests() -> List[str]:
+    if os.path.exists(INTERESTS_FILE):
+        try:
+            with open(INTERESTS_FILE, "r", encoding="utf-8") as f:
+                lines = [ln.strip() for ln in f.readlines()]
+            return [ln for ln in lines if ln]
+        except Exception:
+            pass
+    return DEFAULT_INTERESTS[:]
+
+def load_manifest() -> List[Dict]:
+    legacy = os.path.join(BASE, "articles.json")
+    if (not os.path.exists(MANIFEST)) and os.path.exists(legacy):
+        try:
+            with open(legacy, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            save_manifest(data)
+        except Exception:
+            pass
+    if not os.path.exists(MANIFEST):
+        return []
+    try:
+        with open(MANIFEST, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return []
+    changed = False
+    for a in data:
+        if "fingerprint" not in a:
+            url = a.get("source_url") or a.get("href") or a.get("file") or ""
+            a["fingerprint"] = fingerprint_key(a.get("title",""), url); changed = True
+    if changed:
+        save_manifest(data)
+    return data
+
+def save_manifest(items: List[Dict]):
+    with open(MANIFEST, "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2, ensure_ascii=False)
 
 def is_advertorial(title: str, link: str) -> bool:
     t = (title or "").lower()
@@ -78,58 +148,11 @@ def is_advertorial(title: str, link: str) -> bool:
         return True
     return False
 
-# ===== Time helpers (UTC-aware) =====
-def as_utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None: return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-# ===== Helpers =====
-def slugify(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
-    return text or "article"
-
-def fingerprint_key(title: str, url: str) -> str:
-    base = (title or "").strip().lower() + "|" + (url or "").strip().lower()
-    return hashlib.sha1(base.encode("utf-8")).hexdigest()
-
-def load_manifest() -> List[Dict]:
-    legacy = os.path.join(BASE, "articles.json")
-    if (not os.path.exists(MANIFEST)) and os.path.exists(legacy):
-        try:
-            with open(legacy, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            save_manifest(data)
-        except Exception:
-            pass
-    if not os.path.exists(MANIFEST): return []
-    try:
-        with open(MANIFEST, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    changed = False
-    for a in data:
-        if "fingerprint" not in a:
-            url = a.get("source_url") or a.get("href") or a.get("file") or ""
-            a["fingerprint"] = fingerprint_key(a.get("title",""), url); changed = True
-    if changed: save_manifest(data)
-    return data
-
-def save_manifest(items: List[Dict]):
-    with open(MANIFEST, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2, ensure_ascii=False)
-
-def google_news_rss(query: Optional[str] = None, limit: int = 20) -> List[Dict]:
-    if query:
-        exclusions = " ".join([f"-site:{d}" for d in ["amazon.com","dell.com","alienware.com","bestbuy.com","newegg.com","walmart.com","ebay.com"]])
-        q = urllib.parse.quote(f"{query} {exclusions}")
-        url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
-    else:
-        url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
+    # Strict: only search for each interest, with retailer exclusions
+    exclusions = " ".join([f"-site:{d}" for d in ["amazon.com","dell.com","alienware.com","bestbuy.com","newegg.com","walmart.com","ebay.com"]])
+    q = urllib.parse.quote(f"{query} {exclusions}")
+    url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
     try:
         r = requests.get(url, timeout=15); r.raise_for_status()
         root = ET.fromstring(r.text)
@@ -146,8 +169,7 @@ def google_news_rss(query: Optional[str] = None, limit: int = 20) -> List[Dict]:
     except Exception as e:
         print("RSS error:", e); return []
 
-def fetch_page_text(url: str, max_chars: int = 6000) -> str:
-    """Fetch and extract readable text from the source page; best effort."""
+def fetch_page_text(url: str, max_chars: int = 7000) -> str:
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent":"Mozilla/5.0"}); r.raise_for_status()
         text = r.text
@@ -180,22 +202,44 @@ def fetch_page_text(url: str, max_chars: int = 6000) -> str:
     except Exception as e:
         print("parse error:", e); return ""
 
-def openai_article(topic: str, source_title: str, source_url: str, source_text: str, support_links: List[str]) -> str:
-    """Generate detailed article using provided source_text; include specifics; we append Sources block ourselves."""
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY missing")
+# ===== Title similarity across runs =====
+def tokenize_title(title: str) -> List[str]:
+    tokens = re.findall(r"[a-z0-9]+", (title or "").lower())
+    return [t for t in tokens if t not in STOPWORDS and not t.isdigit()]
+
+def topic_signature(title: str) -> Set[str]:
+    toks = tokenize_title(title)
+    seen, ordered = set(), []
+    for t in toks:
+        if t not in seen:
+            seen.add(t); ordered.append(t)
+        if len(ordered) >= 8: break
+    return set(ordered)
+
+def jaccard(a: Set[str], b: Set[str]) -> float:
+    if not a or not b: return 0.0
+    inter = len(a & b); union = len(a | b)
+    return inter / union if union else 0.0
+
+def is_same_story(title: str, recent_titles: List[str], recent_sigs: List[Set[str]]) -> bool:
+    sig = topic_signature(title)
+    for rt, rs in zip(recent_titles, recent_sigs):
+        ratio = difflib.SequenceMatcher(None, title.lower(), rt.lower()).ratio()
+        if ratio >= 0.82: return True
+        if jaccard(sig, rs) >= 0.6: return True
+        if len(sig) >= 4 and len(sig & rs) >= len(sig) - 1: return True
+    return False
+
+def openai_article(topic: str, source_title: str, source_url: str, source_text: str) -> str:
+    if not OPENAI_API_KEY: raise RuntimeError("OPENAI_API_KEY missing")
     context = source_text[:7000] if source_text else ""
-    extras  = "\n".join(support_links[:3])
     prompt = (
-        "Write ~800 words in an outrageous, sensational, skeptical newspaper tone (fast, punchy, provocative) while staying truthful to the provided source text.\n"
-        "MANDATORY: Include specific facts (names, dates, locations, agencies, charges, direct quotes, numbers, timelines). No vague summary. "
-        "Attribute claims (e.g., 'according to ...'). Do NOT invent beyond the provided context. "
-        "Use only <p>, optional <h2>, <blockquote> HTML.\n\n"
+        "Write ~800 words in an outrageous, sensational, skeptical newspaper tone (fast, punchy, provocative) while being truthful to the provided source text.\n"
+        "MANDATORY: Include specific facts (names, dates, locations, agencies, charges, direct quotes, numbers, timelines). No vague summary.\n"
+        "Attribute claims (e.g., 'according to ...'). Use only <p>, <h2>, <blockquote> HTML.\n\n"
         f"HEADLINE: {source_title}\nTOPIC: {topic}\nSOURCE URL: {source_url}\n"
         "SOURCE TEXT (verbatim; rely on this for facts):\n"
-        f"{context}\n\n"
-        "OPTIONAL LINKS (awareness only; do not quote unless corroborated above):\n"
-        f"{extras}\n"
+        f"{context}\n"
     )
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -203,7 +247,7 @@ def openai_article(topic: str, source_title: str, source_url: str, source_text: 
         json={
             "model": "gpt-4o-mini",
             "messages": [
-                {"role":"system","content":"You are a sensational, skeptical columnist who adheres strictly to provided source text; avoid fabrications or hate."},
+                {"role":"system","content":"You are a sensational, skeptical columnist who adheres strictly to the provided source text; avoid fabrications or hate."},
                 {"role":"user","content": prompt},
             ],
             "temperature": 0.6,
@@ -236,7 +280,8 @@ def unsplash_unique(query: str, used_ids: Set[str]) -> str:
                 timeout=20,
             ); r.raise_for_status()
             data   = r.json()
-            img_id = data.get("id"); img_url = data.get("urls",{}).get("regular")
+            img_id = data.get("id")
+            img_url = data.get("urls",{}).get("regular")
             if not img_id or not img_url: continue
             if img_id in used_ids: continue
             used_ids.add(img_id)
@@ -249,10 +294,17 @@ def replace_block(html_text: str, start: str, end: str, inner: str) -> str:
     block = f"{start}\n{inner}\n{end}"
     return re.sub(re.escape(start)+r".*?"+re.escape(end), block, html_text, flags=re.S)
 
-def render_article_page(title: str, meta_description: str, hero_repo_rel: str, body_html: str, ts: str, sources: List[str]) -> str:
+def render_article_page(title: str, meta_description: str, hero_repo_rel: str, body_html: str, ts: str, sources_pretty: List[Dict]) -> str:
     with open(ARTICLE_TPL, "r", encoding="utf-8") as f:
         tpl = Template(f.read())
-    return tpl.render(title=title, meta_description=meta_description, hero="../"+hero_repo_rel, body=body_html, timestamp=ts, sources=sources)
+    return tpl.render(
+        title=title,
+        meta_description=meta_description,
+        hero="../"+hero_repo_rel,
+        body=body_html,
+        timestamp=ts,
+        sources=sources_pretty
+    )
 
 def render_archive(manifest: List[Dict]):
     with open(ARCHIVE_TPL, "r", encoding="utf-8") as f:
@@ -264,7 +316,7 @@ def render_archive(manifest: List[Dict]):
 
 def toronto_weather() -> str:
     url = "https://api.open-meteo.com/v1/forecast"
-    params = {"latitude": 43.65107, "longitude": -79.347015, "current": "temperature_2m,apparent_temperature,wind_speed_10m", "timezone": "America/Toronto"}
+    params = {"latitude":43.65107,"longitude":-79.347015,"current":"temperature_2m,apparent_temperature,wind_speed_10m","timezone":"America/Toronto"}
     try:
         r = requests.get(url, params=params, timeout=15); r.raise_for_status()
         cur = r.json().get("current", {})
@@ -275,10 +327,9 @@ def toronto_weather() -> str:
         return "Weather unavailable"
 
 def pick_diverse(candidates: List[Dict], k: int) -> List[Dict]:
-    """Pick up to k items maximizing diversity across topic and domain."""
     chosen, seen_topic, seen_domain = [], set(), set()
     for c in sorted(candidates, key=lambda x: x["date"], reverse=True):
-        dom = urlparse(c["link"]).netloc.lower().split(":")[0]; 
+        dom = urlparse(c["link"]).netloc.lower().split(":")[0]
         if dom.startswith("www."): dom = dom[4:]
         if (c["topic"] in seen_topic) or (dom in seen_domain): continue
         chosen.append(c); seen_topic.add(c["topic"]); seen_domain.add(dom)
@@ -292,18 +343,31 @@ def pick_diverse(candidates: List[Dict], k: int) -> List[Dict]:
 # ===== Main =====
 def main():
     os.makedirs(ART_DIR, exist_ok=True)
+    interests = load_interests()
     manifest  = load_manifest()
     seen_fps  = {a["fingerprint"] for a in manifest if a.get("fingerprint")}
     cutoff    = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
+    dedup_cut = utcnow() - timedelta(hours=DEDUP_WINDOW_HOURS)
 
-    # Gather candidates (filter ads & old items)
+    # recent memory for cross-run same-story suppression
+    recent_titles: List[str] = []
+    recent_sigs:   List[Set[str]] = []
+    for a in manifest:
+        dt = parse_manifest_dt(a.get("date",""))
+        if dt and dt >= dedup_cut:
+            ttl = a.get("title","")
+            recent_titles.append(ttl)
+            recent_sigs.append(topic_signature(ttl))
+
+    # strictly query each interest
     candidates: List[Dict] = []
-    for topic in INTERESTS:
+    for topic in interests:
         for it in google_news_rss(topic, limit=12):
             it_date = as_utc(it["date"])
             if it_date < cutoff: continue
             fp = fingerprint_key(it["title"], it["link"])
-            if fp in seen_fps:  continue
+            if fp in seen_fps: continue
+            if is_same_story(it["title"], recent_titles, recent_sigs): continue
             candidates.append({"topic": topic, "title": it["title"], "link": it["link"], "date": it_date})
 
     uniq = pick_diverse(candidates, NUM_PER_RUN)
@@ -314,32 +378,34 @@ def main():
 
     for c in uniq:
         source_text = fetch_page_text(c["link"])
-        # one supporting link (for citation variety; not used as factual base unless corroborated)
-        support = []
-        for i in google_news_rss(None, limit=5):
-            if i["link"] != c["link"] and not is_advertorial(i["title"], i["link"]):
-                support.append(i["link"])
-                break
         try:
-            body_html = openai_article(c["topic"], c["title"], c["link"], source_text, support)
+            body_html = openai_article(c["topic"], c["title"], c["link"], source_text)
         except Exception as e:
             print("OpenAI error:", e); continue
 
-        # Append Sources block ourselves to guarantee presence
-        srcs = [c["link"], *support]
-        sources_block = "<h2>Sources</h2><ul>" + "".join([f"<li><a href=\"{html.escape(u)}\" target=\"_blank\" rel=\"noopener\">{html.escape(u)}</a></li>" for u in srcs]) + "</ul>"
-        body_html = body_html.strip() + "\n" + sources_block
+        # Pretty sources (no raw full URL text)
+        def nice_label(u: str) -> str:
+            try:
+                h = urlparse(u).netloc.lower()
+                if h.startswith("www."): h = h[4:]
+                return h
+            except Exception:
+                return "Source"
+        sources_pretty = [{"url": c["link"], "label": nice_label(c["link"])}]
 
         img_repo_rel = unsplash_unique(c["topic"], used_img_ids)
         filename = f"{slugify(c['title'])}.html"
         ts = c["date"].strftime("%Y-%m-%d %H:%M UTC")
 
-        page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts, srcs)
+        page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts, sources_pretty)
         with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f: f.write(page_html)
 
         fp = fingerprint_key(c["title"], c["link"])
         manifest.insert(0, {"title": c["title"], "file": filename, "image": img_repo_rel, "date": ts, "source_url": c["link"], "fingerprint": fp})
         created.append(c)
+
+        # update memory in-run
+        recent_titles.append(c["title"]); recent_sigs.append(topic_signature(c["title"]))
 
     if created:
         save_manifest(manifest)
@@ -367,16 +433,30 @@ def main():
     headlines_src = manifest[:HEADLINES_COUNT]
     headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
 
+    # ticker built from interests (strict)
     ticker_titles: List[str] = []
-    for topic in INTERESTS:
+    for topic in interests:
         for itm in google_news_rss(topic, limit=2):
             ticker_titles.append(itm["title"])
             if len(ticker_titles) >= TICKER_COUNT: break
         if len(ticker_titles) >= TICKER_COUNT: break
     ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
 
-    trending_feed = google_news_rss(None, limit=TRENDING_COUNT)
-    trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>" for i in trending_feed]) or "<li>No data.</li>"
+    # trending can remain general
+    try:
+        url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+        r = requests.get(url, timeout=15); r.raise_for_status()
+        root = ET.fromstring(r.text)
+        trending = []
+        for item in root.findall(".//item")[:TRENDING_COUNT]:
+            title = (item.findtext("title") or "").strip()
+            link  = (item.findtext("link")  or "").strip()
+            if not title or not link: continue
+            if is_advertorial(title, link): continue
+            trending.append({"title": title, "link": link})
+        trending_html = "\n".join([f"<li><a href=\"{i['link']}\" target=\"_blank\" rel=\"noopener\">{html.escape(i['title'])}</a></li>" for i in trending]) or "<li>No data.</li>"
+    except Exception:
+        trending_html = "<li>No data.</li>"
 
     weather_text = toronto_weather()
 
