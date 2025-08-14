@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{{ title }} — Search 433</title>
+  <title>{{ title }}</title>
   <meta name="description" content="{{ meta_description }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../style.css" />
 </head>
 <body class="theme-darkblue">
   <header class="site-header">
@@ -33,24 +33,38 @@
     </div>
   </header>
 
-  <article class="section">
-    <div class="container">
-      <div class="card" style="overflow:hidden">
-        <div class="card-media hero-media" style="aspect-ratio:16/9;background-image:url('{{ hero }}')"></div>
-      </div>
+  <main>
+    <div class="hero" style="background-image:url('{{ hero }}')"></div>
+    <article class="prose container">
+      <h1 class="article-title">{{ title }}</h1>
+      <p class="byline">Published {{ timestamp }}</p>
 
-      <div class="prose" style="margin-top:18px">
-        <h1 class="article-title">{{ title }}</h1>
-        <p class="byline">{{ timestamp }}</p>
-        {{ body | safe }}
-      </div>
-    </div>
-  </article>
+      {{ body | safe }}
+
+      {% if sources and sources|length > 0 %}
+      <section class="sources">
+        <h2 class="sources-title">Sources</h2>
+        <div class="sources-grid">
+          {% for s in sources %}
+            <div class="source-card">
+              <div class="source-meta">
+                <div class="source-host">{{ s.label }}</div>
+              </div>
+              <a class="btn btn-source" href="{{ s.url }}" target="_blank" rel="noopener">
+                View source
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </article>
+  </main>
 
   <footer class="site-footer">
     <div class="container row between wrap">
       <p>© <script>document.write(new Date().getFullYear())</script> Search 433</p>
-      <p class="muted">Preserved in the archive.</p>
+      <p class="muted">Permanent archive.</p>
     </div>
   </footer>
 </body>
