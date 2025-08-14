@@ -1,89 +1,96 @@
 # scraper.py
 import asyncio
-from typing import Dict, List, Tuple
-from urllib.parse import urlparse
-import re
-
-from bs4 import BeautifulSoup  # installed in requirements
+from typing import List, Tuple
+from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
-def _extract_from_html(html: str) -> Tuple[str, List[str]]:
+MIN_IMG_WIDTH  = 800
+MIN_IMG_HEIGHT = 450
+MIN_AR = 1.2   # prefer landscape >= 1.2
+MAX_AR = 3.2
+
+def _extract_fallback_text(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
-
-    # Prefer <article>, then best <main>/<section>/<div> by paragraph count
-    def best_text_container():
-        art = soup.find("article")
-        if art:
-            return art
-        candidates = []
-        for sel in ["main", "section", "div"]:
-            for el in soup.find_all(sel):
-                pcount = len(el.find_all("p"))
-                cls = " ".join(el.get("class", []))
-                score = pcount
-                if any(k in (cls or "").lower() for k in ["content","article","story","post","entry","body","read"]):
-                    score += 4
-                if score >= 6:
-                    candidates.append((score, el))
-        if candidates:
-            candidates.sort(key=lambda x: x[0], reverse=True)
-            return candidates[0][1]
-        return soup
-
-    container = best_text_container()
+    art = soup.find("article")
+    container = art or soup
     text = " ".join(p.get_text(" ", strip=True) for p in container.find_all(["p","li"]))
-    text = re.sub(r"\s+", " ", text or "").strip()
+    return " ".join(text.split())
 
-    # Images: og:image + images inside container
-    images = set()
-    for m in soup.find_all("meta", attrs={"property":"og:image"}):
-        if m.get("content"): images.add(m["content"])
-    for m in soup.find_all("meta", attrs={"name":"twitter:image"}):
-        if m.get("content"): images.add(m["content"])
-    for im in container.find_all("img", src=True):
-        src = im["src"]
-        if src.startswith("data:"): continue
-        images.add(src)
-
-    # Prefer larger-looking URLs
-    ordered = sorted(images, key=lambda u: (("=w" in u or "width" in u or "2048" in u or "1600" in u), len(u)), reverse=True)
-    return text, ordered[:6]
-
-async def _scrape(url: str, timeout_ms: int = 20000) -> Tuple[str, List[str]]:
+async def _scrape(url: str, timeout_ms: int = 25000) -> Tuple[str, List[str]]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36")
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+        )
         page = await context.new_page()
         try:
             await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
-            # Many news sites lazy-load—give a moment, then try networkidle
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 pass
+
+            # Prefer a real <article> text if present
             html = await page.content()
-            text, images = _extract_from_html(html)
-            # If text too short, try scrolling to trigger lazy content
+            soup = BeautifulSoup(html, "lxml")
+            article = soup.find("article")
+            if article:
+                text = " ".join(p.get_text(" ", strip=True) for p in article.find_all(["p","li"]))
+            else:
+                text = ""
             if len(text) < 300:
-                for _ in range(4):
-                    await page.mouse.wheel(0, 2000)
-                    await page.wait_for_timeout(800)
-                html = await page.content()
-                text, images = _extract_from_html(html)
-            return text, images
+                text = _extract_fallback_text(html)
+
+            # Collect high-quality images using the rendered DOM (natural size)
+            js = """
+            () => {
+              function scoreImg(img) {
+                const w = img.naturalWidth || 0;
+                const h = img.naturalHeight || 0;
+                if (w < 1 || h < 1) return -1;
+                const ar = w / h;
+                let s = 0;
+                if (w >= %d && h >= %d) s += 5;
+                if (ar >= %f && ar <= %f) s += 3; // landscape preference
+                // deweight tiny thumbs/icons/logos
+                if (w < 64 || h < 64) s -= 5;
+                const src = (img.currentSrc || img.src || "").toLowerCase();
+                // penalize obvious ui images
+                const bad = ["sprite","icon","logo","placeholder","thumb","avatar","tracking","pixel","adsystem"];
+                if (bad.some(b => src.includes(b))) s -= 4;
+                return s + Math.log(1 + w*h)/10.0;
+              }
+
+              const scope = document.querySelector("article") || document.body;
+              const imgs = Array.from(scope.querySelectorAll("img[src]"));
+              const candidates = imgs
+                 .map(img => ({src: img.currentSrc || img.src, w: img.naturalWidth||0, h: img.naturalHeight||0, s: scoreImg(img)}))
+                 .filter(o => o.s > 0)
+                 .sort((a,b) => b.s - a.s);
+              return candidates.slice(0, 8);
+            }
+            """ % (MIN_IMG_WIDTH, MIN_IMG_HEIGHT, MIN_AR, MAX_AR)
+            cands = await page.evaluate(js)
+            abs_urls: List[str] = []
+            base = page.url
+            for c in cands:
+                u = c.get("src") or ""
+                if not u or u.startswith("data:"): continue
+                abs_urls.append(urljoin(base, u))
+
+            return " ".join(text.split()), abs_urls
         finally:
             await context.close()
             await browser.close()
 
 def scrape_article(url: str) -> Tuple[str, List[str]]:
-    """Sync wrapper for async Playwright scraper."""
     try:
         return asyncio.run(_scrape(url))
     except RuntimeError:
-        # If already in an event loop (rare in GH Actions), create a new one
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
+            asyncio.set_event_loop(loop)
             return loop.run_until_complete(_scrape(url))
         finally:
             loop.close()
