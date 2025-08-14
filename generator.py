@@ -71,8 +71,14 @@ RETAIL_DOMAINS = {
 }
 AD_KEYWORDS = {"sale","deal","discount","coupon","buy","order now","% off","save","preorder","pre-order","promo","promo code","sponsored","advertorial","ad:"}
 
+# Hard paywalls or frequently blocked
 HARD_PAYWALLS = {
-    "wsj.com","ft.com","bloomberg.com","economist.com","telegraph.co.uk","nytimes.com","theatlantic.com","hollywoodreporter.com"
+    "wsj.com","ft.com","bloomberg.com","economist.com","telegraph.co.uk","nytimes.com","washingtonpost.com","hollywoodreporter.com"
+}
+
+# Obvious non-news / low-value for our use
+DISALLOWED_TOKENS = {
+    "crossword","wordle","mini crossword","forecast","weather","thunderstorms","rain totals","horoscope","lottery"
 }
 
 STOPWORDS = {
@@ -90,6 +96,12 @@ UA_GOOGLEBOT = {
     "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+PREFERRED_SITES = [
+    "reuters.com","apnews.com","bbc.com","npr.org","theguardian.com","aljazeera.com",
+    "cbsnews.com","abcnews.go.com","nbcnews.com","cnbc.com","axios.com","politico.com",
+    "cbc.ca","ctvnews.ca","globalnews.ca","timesofindia.indiatimes.com","hindustantimes.com"
+]
 
 # ===== Time =====
 def as_utc(dt: datetime) -> datetime:
@@ -189,6 +201,10 @@ def is_hard_paywall(link: str) -> bool:
     except Exception:
         return False
 
+def has_disallowed_token(title: str) -> bool:
+    t = (title or "").lower()
+    return any(tok in t for tok in DISALLOWED_TOKENS)
+
 def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
     exclusions = " ".join([f"-site:{d}" for d in ["amazon.com","dell.com","alienware.com","bestbuy.com","newegg.com","walmart.com","ebay.com"]])
     q = urllib.parse.quote(f"{query} {exclusions}")
@@ -202,10 +218,15 @@ def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
             title = (item.findtext("title") or "").strip()
             link  = (item.findtext("link")  or "").strip()
             pub   = (item.findtext("pubDate") or "").strip()
+            desc  = (item.findtext("description") or "").strip()
             if not title or not link: continue
             if is_advertorial(title, link): continue
+            if has_disallowed_token(title): continue
             dt = as_utc(parsedate_to_datetime(pub)) if pub else utcnow()
-            items.append({"title": title, "link": link, "date": dt})
+            # strip tags in description for fallback text
+            desc_txt = re.sub("<[^>]+>", " ", desc)
+            desc_txt = re.sub(r"\s+", " ", desc_txt).strip()
+            items.append({"title": title, "link": link, "date": dt, "desc": desc_txt})
         return items
     except Exception as e:
         print("RSS error:", e)
@@ -238,7 +259,7 @@ def try_jsonld_article(soup: BeautifulSoup) -> Optional[str]:
             else: t = []
             if any(x in {"newsarticle","article","blogposting"} for x in t):
                 body = obj.get("articleBody") or obj.get("description")
-                if body and isinstance(body, str) and len(body) > 250:
+                if body and isinstance(body, str) and len(body) > 200:
                     return re.sub(r"\s+", " ", body).strip()
     return None
 
@@ -246,7 +267,7 @@ def extract_main_text(soup: BeautifulSoup) -> str:
     art = soup.find("article")
     if art:
         txt = " ".join(p.get_text(" ", strip=True) for p in art.find_all(["p","li"]))
-        if len(txt) > 300:
+        if len(txt) > 250:
             return re.sub(r"\s+", " ", txt).strip()
     candidates = []
     for sel in ["main","div","section"]:
@@ -287,12 +308,13 @@ def fetch_html(url: str, headers: Dict[str,str]) -> Tuple[str, str]:
 def fetch_via_jina_text(url: str) -> str:
     try:
         parsed = urlparse(url)
+        # Exact format expected by r.jina.ai: include scheme in the path
         base = f"{parsed.scheme}://{parsed.netloc}{parsed.path or ''}"
         if parsed.query:
             base += f"?{parsed.query}"
         snapshot = f"https://r.jina.ai/{base}"
         r = requests.get(snapshot, timeout=20)
-        if r.ok and len(r.text) > 250:
+        if r.ok and len(r.text) > 200:
             return re.sub(r"\s+", " ", r.text).strip()
     except Exception:
         pass
@@ -304,7 +326,6 @@ def youtube_video_id(url: str) -> Optional[str]:
         if "youtube.com" in u.netloc:
             qs = urllib.parse.parse_qs(u.query)
             if "v" in qs: return qs["v"][0]
-            # /shorts/<id> or /embed/<id>
             parts = u.path.strip("/").split("/")
             if len(parts) >= 2 and parts[0] in {"embed","shorts"}:
                 return parts[1]
@@ -325,15 +346,15 @@ def fetch_youtube_transcript(url: str) -> str:
     except Exception:
         return ""
 
-def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 250, max_chars: int = 7000) -> str:
+def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 200, max_chars: int = 7000) -> str:
     """
-    Fetch & extract article body with many fallbacks.
+    Fetch & extract article body with layered fallbacks.
     """
     # Special case: YouTube → transcript
     host = urlparse(url).netloc.lower()
     if "youtube.com" in host or "youtu.be" in host:
         yt = fetch_youtube_transcript(url)
-        if len(yt) >= 250:
+        if len(yt) >= 200:
             return yt[:max_chars]
 
     tried_urls = set()
@@ -446,7 +467,8 @@ def alt_queries_from_title(title: str) -> List[str]:
     q2 = " ".join(toks[:4])
     return [title, q1, q2]
 
-def gather_source_pack(title: str, primary_url: str, target_chars: int = 900, max_sources: int = 6) -> Tuple[str, List[str]]:
+def gather_source_pack(title: str, primary_url: str, seed_desc: Optional[str] = None,
+                       target_chars: int = 800, max_sources: int = 8) -> Tuple[str, List[str]]:
     texts: List[str] = []
     urls:  List[str] = []
 
@@ -456,26 +478,44 @@ def gather_source_pack(title: str, primary_url: str, target_chars: int = 900, ma
     def add_source(u: str):
         if u in urls: return
         if is_hard_paywall(u): return
-        t = fetch_page_text(u, title=title, min_chars=250)
-        if len(t) < 250:
+        t = fetch_page_text(u, title=title, min_chars=200)
+        if len(t) < 200:
             t2 = fetch_via_jina_text(u)
             if len(t2) > len(t): t = t2
-        if len(t) >= 250:
+        if len(t) >= 180:
             for exist in texts:
                 if too_similar(t, exist):
                     return
             texts.append(t); urls.append(u)
+
+    # 0) RSS description as soft seed (if present)
+    if seed_desc and len(seed_desc) >= 120:
+        texts.append(seed_desc)
 
     # 1) primary
     add_source(primary_url)
 
     # 2) alternates using multiple queries (not only exact title)
     for q in alt_queries_from_title(title):
-        for alt in google_news_rss(q, limit=10):
+        # preferred domains first
+        for site in PREFERRED_SITES:
+            if len(texts) >= max_sources: break
+            alt_q = f"site:{site} {q}"
+            for alt in google_news_rss(alt_q, limit=6):
+                if len(texts) >= max_sources: break
+                link = alt["link"]
+                if link == primary_url: continue
+                if is_advertorial(title, link): continue
+                if has_disallowed_token(alt["title"]): continue
+                add_source(link)
+        if len(texts) >= max_sources: break
+        # then general (no site:)
+        for alt in google_news_rss(q, limit=6):
             if len(texts) >= max_sources: break
             link = alt["link"]
             if link == primary_url: continue
             if is_advertorial(title, link): continue
+            if has_disallowed_token(alt["title"]): continue
             add_source(link)
         if len(texts) >= max_sources: break
 
@@ -570,10 +610,10 @@ def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[s
 def openai_article(topic: str, source_title: str, source_urls: List[str], source_text: str) -> str:
     if not OPENAI_API_KEY: raise RuntimeError("OPENAI_API_KEY missing")
     context = source_text[:7000] if source_text else ""
-    src_list = "\n".join(f"- {u}" for u in source_urls[:6])
+    src_list = "\n".join(f"- {u}" for u in source_urls[:8])
     prompt = (
         "Write ~800 words in an outrageous, sensational, skeptical newspaper tone (fast, punchy, provocative) while being truthful to the provided source text.\n"
-        "MANDATORY: Include specific facts (names, dates, locations, agencies, charges, direct quotes, numbers, timelines). No vague summary.\n"
+        "MANDATORY: Include specific facts (names, dates, locations, agencies, direct quotes, numbers, timelines). No vague summary.\n"
         "Attribute claims to outlets (e.g., 'according to ...'). Use only <p>, <h2>, <blockquote> HTML.\n\n"
         f"HEADLINE: {source_title}\nTOPIC: {topic}\nSOURCES:\n{src_list}\n"
         "SOURCE TEXT (merged from multiple publishers; rely on this for facts):\n"
@@ -735,11 +775,12 @@ def main():
 
     all_candidates: List[Dict] = []
     for topic in interests:
-        feed = google_news_rss(topic, limit=16)
+        feed = google_news_rss(topic, limit=18)
         for it in feed:
             it_date = as_utc(it["date"])
             if it_date < cutoff: continue
-            title = it["title"]; link = it["link"]
+            title = it["title"]; link = it["link"]; desc = it.get("desc") or ""
+            if has_disallowed_token(title): continue
             fp = fingerprint_key(title, link)
             if fp in seen_fps: continue
             if is_advertorial(title, link): continue
@@ -757,7 +798,7 @@ def main():
                     last_ts = None
                 cooldown_active = last_ts and (utcnow() - last_ts) < timedelta(hours=STORY_COOLDOWN_HRS)
                 if cooldown_active:
-                    merged_text, used_sources = gather_source_pack(title, link, target_chars=900, max_sources=6)
+                    merged_text, used_sources = gather_source_pack(title, link, seed_desc=desc, target_chars=800, max_sources=8)
                     if not significant_update(merged_text, mem.get("last_context","")):
                         continue
 
@@ -766,7 +807,7 @@ def main():
             score = score_candidate(title, it_date, dom, recent_titles, recent_sigs, recent_domains, token_freq)
             all_candidates.append({
                 "topic": topic, "title": title, "link": link, "date": it_date, "domain": dom,
-                "score": score, "cluster": cluster, "merged_text": merged_text, "used_sources": used_sources
+                "score": score, "cluster": cluster, "merged_text": merged_text, "used_sources": used_sources, "desc": desc
             })
 
     cands_by_interest: Dict[str, List[Dict]] = {}
@@ -784,9 +825,10 @@ def main():
         merged_text = c.get("merged_text") or ""
         used_sources = c.get("used_sources") or []
         if not merged_text:
-            merged_text, used_sources = gather_source_pack(c["title"], c["link"], target_chars=900, max_sources=6)
+            merged_text, used_sources = gather_source_pack(c["title"], c["link"], seed_desc=c.get("desc",""), target_chars=800, max_sources=8)
 
-        if len(merged_text) < 400:
+        # FINAL SAFETY: accept shorter merged text if we at least have 300+ chars
+        if len(merged_text) < 300:
             print("Skipped (insufficient merged source text):", c["title"])
             continue
 
