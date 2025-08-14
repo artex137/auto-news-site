@@ -12,6 +12,7 @@ from urllib.parse import urlparse, urljoin
 import difflib
 import math
 import requests
+
 try:
     from bs4 import BeautifulSoup
 except Exception:
@@ -20,6 +21,7 @@ try:
     from readability import Document  # readability-lxml
 except Exception:
     Document = None
+
 from jinja2 import Template
 
 # ===== Config =====
@@ -265,21 +267,35 @@ def fetch_html(url: str, headers: Dict[str,str]) -> Tuple[str, str]:
     r.raise_for_status()
     return r.url, r.text
 
-def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600, max_chars: int = 7000) -> str:
+def fetch_via_jina_text(url: str) -> str:
+    """Fallback: use r.jina.ai to get a readable text snapshot."""
+    for scheme in ("https://", "http://"):
+        try:
+            r = requests.get(f"https://r.jina.ai/{scheme}{urlparse(url).netloc}{urlparse(url).path or ''}{('?' + urlparse(url).query) if urlparse(url).query else ''}", timeout=20)
+            if r.ok and len(r.text) > 300:
+                # r.jina.ai returns plain text / markdown-ish; use as-is
+                txt = re.sub(r"\s+", " ", r.text).strip()
+                return txt
+        except Exception:
+            continue
+    return ""
+
+def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 400, max_chars: int = 7000) -> str:
     """
-    Fetch & extract article:
-      1) Follow Google News to publisher
-      2) JSON-LD articleBody -> <article> -> heuristics
-      3) <link rel='amphtml'>, '/amp', '?output=amp' fallbacks
-      4) Readability
-      5) Retry with Googlebot UA
-      6) If still short and title given, find an alternate publisher via Google News
+    Fetch & extract article body with many fallbacks:
+      - Follow Google News → publisher
+      - JSON-LD articleBody → <article> → heuristics → Readability
+      - AMP: rel=amphtml, '/amp', '?output=amp'
+      - Retry with Googlebot UA
+      - r.jina.ai text snapshot
+      - Alternate publisher by title via Google News
     """
     tried_urls = set()
+
     def _extract_from_html(u: str, html_text: str) -> str:
         if BeautifulSoup:
             soup = BeautifulSoup(html_text, "lxml")
-            # try canonical fetch if different domain
+            # canonical hop (if different host)
             can = soup.find("link", rel=lambda v: v and "canonical" in v.lower())
             if can and can.get("href") and urlparse(can["href"]).netloc:
                 cu = can["href"]
@@ -327,14 +343,14 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
             return re.sub(r"\s+", " ", body).strip()
 
     try:
-        # 1) initial
+        # 1) initial fetch
         final_url, html_text = fetch_html(url, UA_HEADERS)
         tried_urls.add(final_url)
-        # handle Google News interstitial
+
+        # follow Google News interstitial
         if "news.google.com" in urlparse(final_url).netloc.lower():
             if BeautifulSoup:
                 soup = BeautifulSoup(html_text, "lxml")
-                # meta refresh or first external link
                 meta = soup.find("meta", attrs={"http-equiv": re.compile(r"refresh", re.I)})
                 next_url = None
                 if meta and "url=" in (meta.get("content") or "").lower():
@@ -350,23 +366,13 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
 
         body = _extract_from_html(final_url, html_text)
 
-        # 2) /amp or ?output=amp
+        # 2) more AMP tries
         if len(body) < min_chars:
-            amp_try = None
-            if final_url.endswith("/"): amp_try = final_url + "amp"
-            else: amp_try = final_url + "/amp"
+            amp_try = (final_url + "amp") if final_url.endswith("/") else (final_url + "/amp")
             try:
                 u3, t3 = fetch_html(amp_try, UA_HEADERS)
                 tried_urls.add(u3)
-                if BeautifulSoup:
-                    soup3 = BeautifulSoup(t3, "lxml")
-                    body2 = try_jsonld_article(soup3) or extract_main_text(soup3)
-                    if Document and len(body2) < min_chars:
-                        via_read3 = extract_with_readability(t3)
-                        if len(via_read3) > len(body2):
-                            body2 = via_read3
-                else:
-                    body2 = re.sub("<[^>]+>", " ", t3)
+                body2 = _extract_from_html(u3, t3)
                 if len(body2) > len(body):
                     body = body2
             except Exception:
@@ -375,15 +381,7 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
             try:
                 u4, t4 = fetch_html(final_url + "?output=amp", UA_HEADERS)
                 tried_urls.add(u4)
-                if BeautifulSoup:
-                    soup4 = BeautifulSoup(t4, "lxml")
-                    body3 = try_jsonld_article(soup4) or extract_main_text(soup4)
-                    if Document and len(body3) < min_chars:
-                        via_read4 = extract_with_readability(t4)
-                        if len(via_read4) > len(body3):
-                            body3 = via_read4
-                else:
-                    body3 = re.sub("<[^>]+>", " ", t4)
+                body3 = _extract_from_html(u4, t4)
                 if len(body3) > len(body):
                     body = body3
             except Exception:
@@ -394,23 +392,21 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
             try:
                 u5, t5 = fetch_html(final_url, UA_GOOGLEBOT)
                 tried_urls.add(u5)
-                if BeautifulSoup:
-                    soup5 = BeautifulSoup(t5, "lxml")
-                    body4 = try_jsonld_article(soup5) or extract_main_text(soup5)
-                    if Document and len(body4) < min_chars:
-                        via_read5 = extract_with_readability(t5)
-                        if len(via_read5) > len(body4):
-                            body4 = via_read5
-                else:
-                    body4 = re.sub("<[^>]+>", " ", t5)
+                body4 = _extract_from_html(u5, t5)
                 if len(body4) > len(body):
                     body = body4
             except Exception:
                 pass
 
-        # 4) Alternate publisher by title
+        # 4) r.jina.ai snapshot
+        if len(body) < min_chars:
+            via_jina = fetch_via_jina_text(final_url)
+            if len(via_jina) > len(body):
+                body = via_jina
+
+        # 5) Alternate publisher by title
         if len(body) < min_chars and title:
-            alts = google_news_rss(title, limit=6)
+            alts = google_news_rss(title, limit=8)
             for alt in alts:
                 alt_link = alt["link"]
                 if alt_link in tried_urls: continue
@@ -418,15 +414,12 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
                 try:
                     u6, t6 = fetch_html(alt_link, UA_HEADERS)
                     tried_urls.add(u6)
-                    if BeautifulSoup:
-                        soup6 = BeautifulSoup(t6, "lxml")
-                        body5 = try_jsonld_article(soup6) or extract_main_text(soup6)
-                        if Document and len(body5) < min_chars:
-                            via_read6 = extract_with_readability(t6)
-                            if len(via_read6) > len(body5):
-                                body5 = via_read6
-                    else:
-                        body5 = re.sub("<[^>]+>", " ", t6)
+                    body5 = _extract_from_html(u6, t6)
+                    if len(body5) < min_chars:
+                        # try Jina on the alt
+                        via_jina2 = fetch_via_jina_text(u6)
+                        if len(via_jina2) > len(body5):
+                            body5 = via_jina2
                     if len(body5) >= min_chars:
                         body = body5
                         break
@@ -439,7 +432,7 @@ def fetch_page_text(url: str, title: Optional[str] = None, min_chars: int = 600,
         print("parse error:", e)
         return ""
 
-# ===== Similarity / clustering / scoring (unchanged core logic) =====
+# ===== Similarity / clustering / scoring =====
 def tokenize_title(title: str) -> List[str]:
     tokens = re.findall(r"[a-z0-9]+", (title or "").lower())
     return [t for t in tokens if t not in STOPWORDS and not t.isdigit() and len(t) > 2]
@@ -628,7 +621,7 @@ def toronto_weather() -> str:
     except Exception:
         return "Weather unavailable"
 
-# ===== Selection logic =====
+# ===== Scoring / selection =====
 def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int]) -> float:
     r = recency_score(dt)
     n = novelty_score(title, recent_titles, recent_sigs)
@@ -736,7 +729,7 @@ def main():
 
     for c in uniq:
         source_text = c.get("source_text") or fetch_page_text(c["link"], title=c["title"])
-        if not source_text or len(source_text) < 600:
+        if not source_text or len(source_text) < 400:
             print("Skipped (insufficient source text):", c["title"])
             continue
 
