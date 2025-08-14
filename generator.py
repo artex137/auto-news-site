@@ -7,9 +7,10 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
 from urllib.parse import urlparse
 import difflib
+import math
 import requests
 try:
     from bs4 import BeautifulSoup  # optional
@@ -28,25 +29,22 @@ DATA_DIR = os.path.join(BASE, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 MANIFEST = os.path.join(DATA_DIR, "articles.json")
 INTERESTS_FILE = os.path.join(DATA_DIR, "interests.txt")
+STORY_MEM_FILE = os.path.join(DATA_DIR, "story_memory.json")  # cooldown + context memory
 
 TPL_DIR       = os.path.join(BASE, "templates")
 ARTICLE_TPL   = os.path.join(TPL_DIR, "article.html.j2")
 ARCHIVE_TPL   = os.path.join(TPL_DIR, "articles_index.html.j2")
 INDEX         = os.path.join(BASE, "index.html")
 
-# Fallback interests if interests.txt is missing
+# Defaults if interests.txt is missing
 DEFAULT_INTERESTS = [
-    "911 theories",
-    "false flags",
-    "aliens",
-    "comet 3i atlas",
-    "ufos",
-    "joe rogan podcasts",
-    "president trump",
+    "911 theories","false flags","aliens","comet 3i atlas","ufos","joe rogan podcasts","president trump",
 ]
 
 NEWS_LOOKBACK_HOURS = 24
-DEDUP_WINDOW_HOURS  = 72   # cross-run same-story suppression window
+DEDUP_WINDOW_HOURS  = 72  # cross-run same-story suppression window
+STORY_COOLDOWN_HRS  = 6   # per-story cooldown window allowing re-coverage only with significant updates
+
 NUM_PER_RUN    = 4
 SLIDER_LATEST  = 4
 FEATURED_COUNT = 6
@@ -113,8 +111,7 @@ def load_manifest() -> List[Dict]:
             save_manifest(data)
         except Exception:
             pass
-    if not os.path.exists(MANIFEST):
-        return []
+    if not os.path.exists(MANIFEST): return []
     try:
         with open(MANIFEST, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -125,31 +122,46 @@ def load_manifest() -> List[Dict]:
         if "fingerprint" not in a:
             url = a.get("source_url") or a.get("href") or a.get("file") or ""
             a["fingerprint"] = fingerprint_key(a.get("title",""), url); changed = True
-    if changed:
-        save_manifest(data)
+    if changed: save_manifest(data)
     return data
 
 def save_manifest(items: List[Dict]):
     with open(MANIFEST, "w", encoding="utf-8") as f:
         json.dump(items, f, indent=2, ensure_ascii=False)
 
+# ---- Story memory (cooldown + context) ----
+def load_story_memory() -> Dict[str, Dict]:
+    if not os.path.exists(STORY_MEM_FILE):
+        return {}
+    try:
+        with open(STORY_MEM_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_story_memory(mem: Dict[str, Dict]):
+    # keep memory bounded (most recent ~150 clusters)
+    if len(mem) > 180:
+        # sort by last_ts and keep the newest
+        items = sorted(mem.items(), key=lambda kv: kv[1].get("last_ts", ""), reverse=True)[:150]
+        mem = dict(items)
+    with open(STORY_MEM_FILE, "w", encoding="utf-8") as f:
+        json.dump(mem, f, indent=2, ensure_ascii=False)
+
+# ===== Source handling =====
 def is_advertorial(title: str, link: str) -> bool:
     t = (title or "").lower()
-    if any(k in t for k in AD_KEYWORDS):
-        return True
+    if any(k in t for k in AD_KEYWORDS): return True
     try:
         host = urlparse(link).netloc.lower().split(":")[0]
     except Exception:
         host = ""
     if host.startswith("www."): host = host[4:]
-    if any(d in host for d in RETAIL_DOMAINS):
-        return True
-    if any(seg in link.lower() for seg in ["/shop","/shopping","/deals","/deal/","/store/","/buy/"]):
-        return True
+    if any(d in host for d in RETAIL_DOMAINS): return True
+    if any(seg in link.lower() for seg in ["/shop","/shopping","/deals","/deal/","/store/","/buy/"]): return True
     return False
 
 def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
-    # Strict: only search for each interest, with retailer exclusions
     exclusions = " ".join([f"-site:{d}" for d in ["amazon.com","dell.com","alienware.com","bestbuy.com","newegg.com","walmart.com","ebay.com"]])
     q = urllib.parse.quote(f"{query} {exclusions}")
     url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
@@ -202,10 +214,10 @@ def fetch_page_text(url: str, max_chars: int = 7000) -> str:
     except Exception as e:
         print("parse error:", e); return ""
 
-# ===== Title similarity across runs =====
+# ===== Similarity / topic tokens =====
 def tokenize_title(title: str) -> List[str]:
     tokens = re.findall(r"[a-z0-9]+", (title or "").lower())
-    return [t for t in tokens if t not in STOPWORDS and not t.isdigit()]
+    return [t for t in tokens if t not in STOPWORDS and not t.isdigit() and len(t) > 2]
 
 def topic_signature(title: str) -> Set[str]:
     toks = tokenize_title(title)
@@ -215,6 +227,11 @@ def topic_signature(title: str) -> Set[str]:
             seen.add(t); ordered.append(t)
         if len(ordered) >= 8: break
     return set(ordered)
+
+def cluster_key_from_title(title: str) -> str:
+    # stable cluster id from signature tokens
+    sig = topic_signature(title)
+    return "-".join(sorted(sig)) or slugify(title)[:24]
 
 def jaccard(a: Set[str], b: Set[str]) -> float:
     if not a or not b: return 0.0
@@ -229,6 +246,65 @@ def is_same_story(title: str, recent_titles: List[str], recent_sigs: List[Set[st
         if jaccard(sig, rs) >= 0.6: return True
         if len(sig) >= 4 and len(sig & rs) >= len(sig) - 1: return True
     return False
+
+# ===== Update significance (for cooldown bypass) =====
+def normalize_context(txt: str) -> str:
+    t = re.sub(r"\s+", " ", (txt or "").strip().lower())
+    # keep letters, digits, basic punctuation
+    t = re.sub(r"[^a-z0-9\.\,\:\;\-\(\)\/\s]", " ", t)
+    return re.sub(r"\s+", " ", t)
+
+def numbers_set(txt: str) -> Set[str]:
+    return set(re.findall(r"\b\d[\d,\.]*\b", txt or ""))
+
+def significant_update(new_text: str, old_text: str) -> bool:
+    if not old_text: return True
+    a = normalize_context(old_text)
+    b = normalize_context(new_text)
+    if not b: return False
+    ratio = difflib.SequenceMatcher(None, a, b).ratio()
+    # new numbers not present before?
+    new_nums = numbers_set(b) - numbers_set(a)
+    # different length signals added detail
+    len_change = abs(len(b) - len(a)) / max(1, len(a))
+    # consider significant if content changed a lot OR new numbers OR decent length change
+    return (ratio <= 0.75) or (len(new_nums) >= 1) or (len_change >= 0.20)
+
+# ===== Scoring for selection =====
+def recency_score(dt: datetime) -> float:
+    hours = max(0.0, (utcnow() - dt).total_seconds() / 3600.0)
+    return math.exp(-hours / 24.0)
+
+def novelty_score(title: str, recent_titles: List[str], recent_sigs: List[Set[str]]) -> float:
+    sig = topic_signature(title)
+    best = 0.0
+    for rt, rs in zip(recent_titles, recent_sigs):
+        ratio = difflib.SequenceMatcher(None, title.lower(), rt.lower()).ratio()
+        jac   = jaccard(sig, rs)
+        sim   = max(ratio, jac)
+        if sim > best: best = sim
+    return max(0.0, 1.0 - best)
+
+def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
+    cut = utcnow() - timedelta(hours=window_hours)
+    titles: List[str] = []
+    sigs:   List[Set[str]] = []
+    domains: Set[str] = set()
+    token_freq: Dict[str,int] = {}
+    for a in manifest:
+        dt = parse_manifest_dt(a.get("date",""))
+        if dt and dt >= cut:
+            title = a.get("title","")
+            titles.append(title)
+            ts = topic_signature(title)
+            sigs.append(ts)
+            for t in ts:
+                token_freq[t] = token_freq.get(t, 0) + 1
+            link = a.get("source_url","")
+            d = urlparse(link).netloc.lower().split(":")[0]
+            if d.startswith("www."): d = d[4:]
+            if d: domains.add(d)
+    return titles, sigs, domains, token_freq
 
 def openai_article(topic: str, source_title: str, source_url: str, source_text: str) -> str:
     if not OPENAI_API_KEY: raise RuntimeError("OPENAI_API_KEY missing")
@@ -326,18 +402,55 @@ def toronto_weather() -> str:
     except Exception:
         return "Weather unavailable"
 
-def pick_diverse(candidates: List[Dict], k: int) -> List[Dict]:
-    chosen, seen_topic, seen_domain = [], set(), set()
-    for c in sorted(candidates, key=lambda x: x["date"], reverse=True):
-        dom = urlparse(c["link"]).netloc.lower().split(":")[0]
-        if dom.startswith("www."): dom = dom[4:]
-        if (c["topic"] in seen_topic) or (dom in seen_domain): continue
-        chosen.append(c); seen_topic.add(c["topic"]); seen_domain.add(dom)
-        if len(chosen) >= k: return chosen
-    for c in sorted(candidates, key=lambda x: x["date"], reverse=True):
-        if c in chosen: continue
-        chosen.append(c)
-        if len(chosen) >= k: break
+# ===== Selection logic =====
+def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int]) -> float:
+    r = recency_score(dt)
+    n = novelty_score(title, recent_titles, recent_sigs)
+    dom_penalty = 0.12 if domain in recent_domains else 0.0
+    sig = topic_signature(title)
+    over = max((token_freq.get(t,0) for t in sig), default=0)
+    tok_penalty = min(0.20, 0.04 * over)  # up to -0.20
+    return 0.55*r + 0.35*n - dom_penalty - tok_penalty
+
+def pick_round_robin(cands_by_interest: Dict[str, List[Dict]], k: int) -> List[Dict]:
+    """Round-robin across interests; cap repeated dominant tokens per run."""
+    chosen: List[Dict] = []
+    run_tokens: Dict[str,int] = {}
+    interests = [i for i in cands_by_interest.keys() if cands_by_interest[i]]
+    idx = 0
+    CAP_PER_TOKEN = 1  # at most 1 item containing a given salient token per batch
+    while len(chosen) < k and interests:
+        i = interests[idx % len(interests)]
+        pool = cands_by_interest[i]
+        while pool and (pool[0].get("_blocked", False)):
+            pool.pop(0)
+        if not pool:
+            interests.remove(i)
+            if not interests: break
+            continue
+        cand = pool.pop(0)
+        sig = topic_signature(cand["title"])
+        if any(run_tokens.get(t,0) >= CAP_PER_TOKEN for t in sig):
+            cand["_blocked"] = True
+            pool.insert(0, cand)
+            idx += 1
+            continue
+        chosen.append(cand)
+        for t in sig:
+            run_tokens[t] = run_tokens.get(t,0) + 1
+        idx += 1
+    if len(chosen) < k:
+        leftovers = []
+        for plist in cands_by_interest.values():
+            leftovers.extend([c for c in plist if not c.get("_blocked")])
+        for c in leftovers:
+            if len(chosen) >= k: break
+            sig = topic_signature(c["title"])
+            if any(run_tokens.get(t,0) >= CAP_PER_TOKEN for t in sig):
+                continue
+            chosen.append(c)
+            for t in sig:
+                run_tokens[t] = run_tokens.get(t,0) + 1
     return chosen[:k]
 
 # ===== Main =====
@@ -345,45 +458,75 @@ def main():
     os.makedirs(ART_DIR, exist_ok=True)
     interests = load_interests()
     manifest  = load_manifest()
+    story_mem = load_story_memory()
     seen_fps  = {a["fingerprint"] for a in manifest if a.get("fingerprint")}
     cutoff    = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
-    dedup_cut = utcnow() - timedelta(hours=DEDUP_WINDOW_HOURS)
 
-    # recent memory for cross-run same-story suppression
-    recent_titles: List[str] = []
-    recent_sigs:   List[Set[str]] = []
-    for a in manifest:
-        dt = parse_manifest_dt(a.get("date",""))
-        if dt and dt >= dedup_cut:
-            ttl = a.get("title","")
-            recent_titles.append(ttl)
-            recent_sigs.append(topic_signature(ttl))
+    # recent memory for scoring/suppression
+    recent_titles, recent_sigs, recent_domains, token_freq = build_recent_memory(manifest, DEDUP_WINDOW_HOURS)
 
-    # strictly query each interest
-    candidates: List[Dict] = []
+    # strictly query each interest and prepare scored candidates
+    all_candidates: List[Dict] = []
     for topic in interests:
-        for it in google_news_rss(topic, limit=12):
+        feed = google_news_rss(topic, limit=16)
+        for it in feed:
             it_date = as_utc(it["date"])
-            if it_date < cutoff: continue
-            fp = fingerprint_key(it["title"], it["link"])
-            if fp in seen_fps: continue
-            if is_same_story(it["title"], recent_titles, recent_sigs): continue
-            candidates.append({"topic": topic, "title": it["title"], "link": it["link"], "date": it_date})
+            if it_date < cutoff:
+                continue
+            title = it["title"]; link = it["link"]
+            fp = fingerprint_key(title, link)
+            if fp in seen_fps:
+                continue
+            # cross-run same-story suppression
+            if is_same_story(title, recent_titles, recent_sigs):
+                continue
 
-    uniq = pick_diverse(candidates, NUM_PER_RUN)
+            # per-story cooldown logic
+            cluster = cluster_key_from_title(title)
+            mem = story_mem.get(cluster)
+            src_text = None
+            if mem:
+                try:
+                    last_ts = datetime.fromisoformat(mem.get("last_ts")).replace(tzinfo=timezone.utc)
+                except Exception:
+                    last_ts = None
+                cooldown_active = last_ts and (utcnow() - last_ts) < timedelta(hours=STORY_COOLDOWN_HRS)
+                if cooldown_active:
+                    # only allow if significant updates vs last_context
+                    src_text = fetch_page_text(link)
+                    if not significant_update(src_text, mem.get("last_context","")):
+                        continue  # skip within cooldown if no substantive change
+
+            dom = urlparse(link).netloc.lower().split(":")[0]
+            if dom.startswith("www."): dom = dom[4:]
+            score = score_candidate(title, it_date, dom, recent_titles, recent_sigs, recent_domains, token_freq)
+            all_candidates.append({
+                "topic": topic, "title": title, "link": link, "date": it_date, "domain": dom,
+                "score": score, "cluster": cluster, "source_text": src_text  # may be None; fetched later if needed
+            })
+
+    # bucket by interest and sort best-first per interest
+    cands_by_interest: Dict[str, List[Dict]] = {}
+    for topic in interests:
+        group = [c for c in all_candidates if c["topic"] == topic]
+        group.sort(key=lambda x: x["score"], reverse=True)
+        cands_by_interest[topic] = group
+
+    # round-robin pick with token caps
+    uniq = pick_round_robin(cands_by_interest, NUM_PER_RUN)
 
     # Generate articles
     used_img_ids: Set[str] = set()
     created: List[Dict] = []
 
     for c in uniq:
-        source_text = fetch_page_text(c["link"])
+        source_text = c.get("source_text") or fetch_page_text(c["link"])
         try:
             body_html = openai_article(c["topic"], c["title"], c["link"], source_text)
         except Exception as e:
             print("OpenAI error:", e); continue
 
-        # Pretty sources (no raw full URL text)
+        # Pretty sources (no raw long URLs)
         def nice_label(u: str) -> str:
             try:
                 h = urlparse(u).netloc.lower()
@@ -404,12 +547,21 @@ def main():
         manifest.insert(0, {"title": c["title"], "file": filename, "image": img_repo_rel, "date": ts, "source_url": c["link"], "fingerprint": fp})
         created.append(c)
 
-        # update memory in-run
-        recent_titles.append(c["title"]); recent_sigs.append(topic_signature(c["title"]))
+        # update recent memory within-run
+        recent_titles.append(c["title"])
+        recent_sigs.append(topic_signature(c["title"]))
+
+        # update story memory (mark cooldown start + store brief context)
+        story_mem[c["cluster"]] = {
+            "last_ts": utcnow().isoformat(),
+            "last_title": c["title"],
+            "last_context": (source_text or "")[:3000],  # cap for file size
+        }
 
     if created:
         save_manifest(manifest)
         render_archive(manifest)
+        save_story_memory(story_mem)
 
     # Homepage blocks
     latest = manifest[:SLIDER_LATEST]
@@ -425,8 +577,8 @@ def main():
     featured_html = "\n".join([
         ("<a class='card' href='articles/{file}'>"
          "<div class='card-media' style=\"background-image:url('{img}')\"></div>"
-         "<div class='card-body'><h4 class='card-title'>{ttl}</h4></div>"
-         "</a>").format(file=m["file"], img=m.get("image", FALLBACK), ttl=html.escape(m["title"]))
+         "<div class='card-body'><h4 class='card-title'>{ttl}</h4><div class='card-meta'>{date}</div></div>"
+         "</a>").format(file=m["file"], img=m.get("image", FALLBACK), ttl=html.escape(m["title"]), date=m["date"])
         for m in featured_src
     ])
 
@@ -442,7 +594,7 @@ def main():
         if len(ticker_titles) >= TICKER_COUNT: break
     ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
 
-    # trending can remain general
+    # trending (general)
     try:
         url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
         r = requests.get(url, timeout=15); r.raise_for_status()
