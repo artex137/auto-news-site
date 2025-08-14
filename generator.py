@@ -8,12 +8,12 @@ import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import difflib
 import math
 import requests
 try:
-    from bs4 import BeautifulSoup  # optional
+    from bs4 import BeautifulSoup  # optional, but we install it
 except Exception:
     BeautifulSoup = None
 from jinja2 import Template
@@ -42,8 +42,8 @@ DEFAULT_INTERESTS = [
 ]
 
 NEWS_LOOKBACK_HOURS = 24
-DEDUP_WINDOW_HOURS  = 72  # cross-run same-story suppression window
-STORY_COOLDOWN_HRS  = 6   # per-story cooldown window allowing re-coverage only with significant updates
+DEDUP_WINDOW_HOURS  = 72
+STORY_COOLDOWN_HRS  = 6
 
 NUM_PER_RUN    = 4
 SLIDER_LATEST  = 4
@@ -67,6 +67,12 @@ STOPWORDS = {
     "as","is","are","was","were","be","been","being","that","this","those","these","it","its",
     "into","about","after","before","over","under","near","new","latest","breaking","update",
     "report","reports","says","say","said","reveals","revealed","revealing"
+}
+
+UA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 # ===== Time =====
@@ -140,9 +146,7 @@ def load_story_memory() -> Dict[str, Dict]:
         return {}
 
 def save_story_memory(mem: Dict[str, Dict]):
-    # keep memory bounded (most recent ~150 clusters)
     if len(mem) > 180:
-        # sort by last_ts and keep the newest
         items = sorted(mem.items(), key=lambda kv: kv[1].get("last_ts", ""), reverse=True)[:150]
         mem = dict(items)
     with open(STORY_MEM_FILE, "w", encoding="utf-8") as f:
@@ -166,7 +170,8 @@ def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
     q = urllib.parse.quote(f"{query} {exclusions}")
     url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
     try:
-        r = requests.get(url, timeout=15); r.raise_for_status()
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
         root = ET.fromstring(r.text)
         items = []
         for item in root.findall(".//item")[:limit]:
@@ -179,40 +184,158 @@ def google_news_rss(query: str, limit: int = 20) -> List[Dict]:
             items.append({"title": title, "link": link, "date": dt})
         return items
     except Exception as e:
-        print("RSS error:", e); return []
+        print("RSS error:", e)
+        return []
 
-def fetch_page_text(url: str, max_chars: int = 7000) -> str:
-    try:
-        r = requests.get(url, timeout=15, headers={"User-Agent":"Mozilla/5.0"}); r.raise_for_status()
-        text = r.text
-        if not BeautifulSoup:
-            stripped = re.sub("<script.*?</script>", " ", text, flags=re.S|re.I)
-            stripped = re.sub("<style.*?</style>",  " ", stripped, flags=re.S|re.I)
-            stripped = re.sub("<[^>]+>", " ", stripped)
-            return re.sub(r"\s+", " ", stripped).strip()[:max_chars]
-        soup = BeautifulSoup(text, "lxml")
-        article = soup.find("article")
-        if article:
-            content = " ".join(p.get_text(" ", strip=True) for p in article.find_all(["p","li"]))
-        else:
-            candidates = []
-            for sel in ["main","div","section"]:
-                for el in soup.find_all(sel):
-                    cls = " ".join(el.get("class", [])); idv = el.get("id","")
-                    score = 0
-                    if any(k in cls.lower() for k in ["content","article","story","post","entry","body"]): score += 2
-                    if any(k in idv.lower() for k in ["content","article","story","post","entry","body"]): score += 2
-                    score += min(len(el.find_all("p")), 6)
-                    if score >= 4: candidates.append((score, el))
-            if candidates:
-                best = sorted(candidates, key=lambda x: x[0], reverse=True)[0][1]
-                content = " ".join(p.get_text(" ", strip=True) for p in best.find_all("p"))
+# ===== Robust article fetching & extraction =====
+def first_external_link(soup: BeautifulSoup, base_domain: str) -> Optional[str]:
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("/"):
+            href = urljoin("https://news.google.com", href)
+        if href.startswith("http"):
+            d = urlparse(href).netloc.lower()
+            if d.startswith("www."): d = d[4:]
+            if "news.google.com" not in d and "consent.google.com" not in d:
+                return href
+    return None
+
+def try_jsonld_article(soup: BeautifulSoup) -> Optional[str]:
+    # Look for structured data with articleBody
+    for script in soup.find_all("script", attrs={"type":"application/ld+json"}):
+        try:
+            data = json.loads(script.string or "")
+        except Exception:
+            continue
+        objs = data if isinstance(data, list) else [data]
+        for obj in objs:
+            t = obj.get("@type")
+            if isinstance(t, list):
+                t = [x.lower() for x in t]
+            elif isinstance(t, str):
+                t = [t.lower()]
             else:
-                content = soup.get_text(" ", strip=True)
-        content = re.sub(r"\s+", " ", content).strip()
-        return content[:max_chars]
+                t = []
+            if any(x in {"newsarticle","article","blogposting"} for x in t):
+                body = obj.get("articleBody") or obj.get("description")
+                if body and isinstance(body, str) and len(body) > 300:
+                    return re.sub(r"\s+", " ", body).strip()
+    return None
+
+def extract_main_text(soup: BeautifulSoup) -> str:
+    art = soup.find("article")
+    if art:
+        txt = " ".join(p.get_text(" ", strip=True) for p in art.find_all(["p","li"]))
+        if len(txt) > 400:
+            return re.sub(r"\s+", " ", txt).strip()
+    # heuristic container scoring
+    candidates = []
+    for sel in ["main","div","section"]:
+        for el in soup.find_all(sel):
+            cls = " ".join(el.get("class", [])); idv = el.get("id","")
+            score = 0
+            if any(k in (cls or "").lower() for k in ["content","article","story","post","entry","body","read"]): score += 2
+            if any(k in (idv or "").lower() for k in ["content","article","story","post","entry","body","read"]): score += 2
+            score += min(len(el.find_all("p")), 8)
+            if score >= 5:
+                candidates.append((score, el))
+    if candidates:
+        best = sorted(candidates, key=lambda x: x[0], reverse=True)[0][1]
+        txt = " ".join(p.get_text(" ", strip=True) for p in best.find_all("p"))
+        return re.sub(r"\s+", " ", txt).strip()
+    return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+
+def fetch_page_text(url: str, min_chars: int = 800, max_chars: int = 7000) -> str:
+    """
+    Fetch and extract readable text from the publisher page.
+    - Follows Google News intermediary to the real publisher link.
+    - Uses JSON-LD articleBody when available, else <article>, else heuristic container.
+    - Tries AMP fallback if body is too short.
+    """
+    try:
+        # 1) initial fetch (may be Google News)
+        r = requests.get(url, timeout=20, headers=UA_HEADERS, allow_redirects=True)
+        r.raise_for_status()
+        final_url = r.url
+        html_text = r.text
+
+        # If it's a Google News intermediary, follow to the publisher
+        if "news.google.com" in urlparse(final_url).netloc.lower():
+            if BeautifulSoup:
+                soup = BeautifulSoup(html_text, "lxml")
+                # meta refresh?
+                meta = soup.find("meta", attrs={"http-equiv": re.compile(r"refresh", re.I)})
+                if meta and "url=" in (meta.get("content") or "").lower():
+                    m = re.search(r'url=([^;]+)', meta.get("content"), flags=re.I)
+                    if m:
+                        target = html.unescape(m.group(1).strip().strip("'\""))
+                        if target.startswith("/"):
+                            target = urljoin(final_url, target)
+                        url2 = target
+                    else:
+                        url2 = first_external_link(soup, "news.google.com") or final_url
+                else:
+                    url2 = first_external_link(soup, "news.google.com") or final_url
+            else:
+                url2 = final_url
+            if url2 != final_url:
+                r = requests.get(url2, timeout=20, headers=UA_HEADERS, allow_redirects=True)
+                r.raise_for_status()
+                final_url = r.url
+                html_text = r.text
+
+        # 2) extract content
+        if BeautifulSoup:
+            soup = BeautifulSoup(html_text, "lxml")
+            # canonical fixes (some sites render via scripts; canonical is stable)
+            can = soup.find("link", rel=lambda v: v and "canonical" in v.lower())
+            if can and can.get("href") and urlparse(can["href"]).netloc:
+                if urlparse(final_url).netloc.lower() != urlparse(can["href"]).netloc.lower():
+                    try:
+                        r2 = requests.get(can["href"], timeout=20, headers=UA_HEADERS, allow_redirects=True)
+                        if r2.ok and len(r2.text) > 300:
+                            final_url = r2.url
+                            soup = BeautifulSoup(r2.text, "lxml")
+                    except Exception:
+                        pass
+
+            body = try_jsonld_article(soup)
+            if not body:
+                body = extract_main_text(soup)
+        else:
+            # very rough fallback if soup unavailable
+            body = re.sub("<script.*?</script>", " ", html_text, flags=re.S|re.I)
+            body = re.sub("<style.*?</style>",  " ", body, flags=re.S|re.I)
+            body = re.sub("<[^>]+>", " ", body)
+            body = re.sub(r"\s+", " ", body).strip()
+
+        # 3) if too short, try AMP
+        if len(body) < min_chars:
+            # try /amp or ?output=amp
+            amp_try = None
+            if final_url.endswith("/"):
+                amp_try = final_url + "amp"
+            else:
+                amp_try = final_url + "/amp"
+            try:
+                r3 = requests.get(amp_try, timeout=15, headers=UA_HEADERS, allow_redirects=True)
+                if r3.ok and len(r3.text) > 300:
+                    if BeautifulSoup:
+                        soup3 = BeautifulSoup(r3.text, "lxml")
+                        body2 = try_jsonld_article(soup3) or extract_main_text(soup3)
+                    else:
+                        body2 = re.sub("<[^>]+>", " ", r3.text)
+                        body2 = re.sub(r"\s+", " ", body2).strip()
+                    if len(body2) > len(body):
+                        body = body2
+            except Exception:
+                pass
+
+        body = re.sub(r"\s+", " ", body).strip()[:max_chars]
+        return body
     except Exception as e:
-        print("parse error:", e); return ""
+        print("parse error:", e)
+        return ""
 
 # ===== Similarity / topic tokens =====
 def tokenize_title(title: str) -> List[str]:
@@ -229,7 +352,6 @@ def topic_signature(title: str) -> Set[str]:
     return set(ordered)
 
 def cluster_key_from_title(title: str) -> str:
-    # stable cluster id from signature tokens
     sig = topic_signature(title)
     return "-".join(sorted(sig)) or slugify(title)[:24]
 
@@ -250,7 +372,6 @@ def is_same_story(title: str, recent_titles: List[str], recent_sigs: List[Set[st
 # ===== Update significance (for cooldown bypass) =====
 def normalize_context(txt: str) -> str:
     t = re.sub(r"\s+", " ", (txt or "").strip().lower())
-    # keep letters, digits, basic punctuation
     t = re.sub(r"[^a-z0-9\.\,\:\;\-\(\)\/\s]", " ", t)
     return re.sub(r"\s+", " ", t)
 
@@ -263,14 +384,11 @@ def significant_update(new_text: str, old_text: str) -> bool:
     b = normalize_context(new_text)
     if not b: return False
     ratio = difflib.SequenceMatcher(None, a, b).ratio()
-    # new numbers not present before?
     new_nums = numbers_set(b) - numbers_set(a)
-    # different length signals added detail
     len_change = abs(len(b) - len(a)) / max(1, len(a))
-    # consider significant if content changed a lot OR new numbers OR decent length change
     return (ratio <= 0.75) or (len(new_nums) >= 1) or (len_change >= 0.20)
 
-# ===== Scoring for selection =====
+# ===== Scoring / selection =====
 def recency_score(dt: datetime) -> float:
     hours = max(0.0, (utcnow() - dt).total_seconds() / 3600.0)
     return math.exp(-hours / 24.0)
@@ -336,14 +454,18 @@ def openai_article(topic: str, source_title: str, source_url: str, source_text: 
 def download_image(url: str, filename_hint: str) -> str:
     try:
         os.makedirs(ASSETS, exist_ok=True)
-        resp = requests.get(url, timeout=30); resp.raise_for_status()
-        ext = ".jpg"; ctype = resp.headers.get("Content-Type","")
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        ext = ".jpg"
+        ctype = resp.headers.get("Content-Type","")
         if "image/png" in ctype: ext = ".png"
         fname = f"{filename_hint}{ext}"
-        with open(os.path.join(ASSETS, fname), "wb") as f: f.write(resp.content)
+        with open(os.path.join(ASSETS, fname), "wb") as f:
+            f.write(resp.content)
         return f"assets/{fname}"
     except Exception as e:
-        print("Image download error:", e); return FALLBACK
+        print("Image download error:", e)
+        return FALLBACK
 
 def unsplash_unique(query: str, used_ids: Set[str]) -> str:
     if not UNSPLASH_KEY: return FALLBACK
@@ -354,7 +476,8 @@ def unsplash_unique(query: str, used_ids: Set[str]) -> str:
                 headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
                 params={"query": query, "orientation": "landscape", "content_filter":"high"},
                 timeout=20,
-            ); r.raise_for_status()
+            )
+            r.raise_for_status()
             data   = r.json()
             img_id = data.get("id")
             img_url = data.get("urls",{}).get("regular")
@@ -363,7 +486,8 @@ def unsplash_unique(query: str, used_ids: Set[str]) -> str:
             used_ids.add(img_id)
             return download_image(img_url, slugify(f"{query}-{img_id}"))
         except Exception as e:
-            print("Unsplash error:", e); break
+            print("Unsplash error:", e)
+            break
     return FALLBACK
 
 def replace_block(html_text: str, start: str, end: str, inner: str) -> str:
@@ -388,13 +512,15 @@ def render_archive(manifest: List[Dict]):
     articles = [{"href": f"./{m['file']}", "title": m["title"], "image": m.get("image", FALLBACK), "date": m["date"]} for m in manifest]
     html_out = tpl.render(articles=articles)
     os.makedirs(ART_DIR, exist_ok=True)
-    with open(os.path.join(ART_DIR, "index.html"), "w", encoding="utf-8") as f: f.write(html_out)
+    with open(os.path.join(ART_DIR, "index.html"), "w", encoding="utf-8") as f:
+        f.write(html_out)
 
 def toronto_weather() -> str:
     url = "https://api.open-meteo.com/v1/forecast"
     params = {"latitude":43.65107,"longitude":-79.347015,"current":"temperature_2m,apparent_temperature,wind_speed_10m","timezone":"America/Toronto"}
     try:
-        r = requests.get(url, params=params, timeout=15); r.raise_for_status()
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
         cur = r.json().get("current", {})
         t = cur.get("temperature_2m"); feels = cur.get("apparent_temperature"); wind = cur.get("wind_speed_10m")
         if t is None: return "Weather unavailable"
@@ -402,23 +528,22 @@ def toronto_weather() -> str:
     except Exception:
         return "Weather unavailable"
 
-# ===== Selection logic =====
+# ===== Scoring / selection =====
 def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int]) -> float:
     r = recency_score(dt)
     n = novelty_score(title, recent_titles, recent_sigs)
     dom_penalty = 0.12 if domain in recent_domains else 0.0
     sig = topic_signature(title)
     over = max((token_freq.get(t,0) for t in sig), default=0)
-    tok_penalty = min(0.20, 0.04 * over)  # up to -0.20
+    tok_penalty = min(0.20, 0.04 * over)
     return 0.55*r + 0.35*n - dom_penalty - tok_penalty
 
 def pick_round_robin(cands_by_interest: Dict[str, List[Dict]], k: int) -> List[Dict]:
-    """Round-robin across interests; cap repeated dominant tokens per run."""
     chosen: List[Dict] = []
     run_tokens: Dict[str,int] = {}
     interests = [i for i in cands_by_interest.keys() if cands_by_interest[i]]
     idx = 0
-    CAP_PER_TOKEN = 1  # at most 1 item containing a given salient token per batch
+    CAP_PER_TOKEN = 1
     while len(chosen) < k and interests:
         i = interests[idx % len(interests)]
         pool = cands_by_interest[i]
@@ -477,6 +602,8 @@ def main():
             fp = fingerprint_key(title, link)
             if fp in seen_fps:
                 continue
+            if is_advertorial(title, link):
+                continue
             # cross-run same-story suppression
             if is_same_story(title, recent_titles, recent_sigs):
                 continue
@@ -502,7 +629,7 @@ def main():
             score = score_candidate(title, it_date, dom, recent_titles, recent_sigs, recent_domains, token_freq)
             all_candidates.append({
                 "topic": topic, "title": title, "link": link, "date": it_date, "domain": dom,
-                "score": score, "cluster": cluster, "source_text": src_text  # may be None; fetched later if needed
+                "score": score, "cluster": cluster, "source_text": src_text
             })
 
     # bucket by interest and sort best-first per interest
@@ -521,12 +648,17 @@ def main():
 
     for c in uniq:
         source_text = c.get("source_text") or fetch_page_text(c["link"])
+        # Guardrail: if we still don't have enough real content, skip to prevent hallucinations
+        if not source_text or len(source_text) < 800:
+            print("Skipped (insufficient source text):", c["title"])
+            continue
+
         try:
             body_html = openai_article(c["topic"], c["title"], c["link"], source_text)
         except Exception as e:
-            print("OpenAI error:", e); continue
+            print("OpenAI error:", e)
+            continue
 
-        # Pretty sources (no raw long URLs)
         def nice_label(u: str) -> str:
             try:
                 h = urlparse(u).netloc.lower()
@@ -541,7 +673,8 @@ def main():
         ts = c["date"].strftime("%Y-%m-%d %H:%M UTC")
 
         page_html = render_article_page(c["title"], c["title"], img_repo_rel, body_html, ts, sources_pretty)
-        with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f: f.write(page_html)
+        with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f:
+            f.write(page_html)
 
         fp = fingerprint_key(c["title"], c["link"])
         manifest.insert(0, {"title": c["title"], "file": filename, "image": img_repo_rel, "date": ts, "source_url": c["link"], "fingerprint": fp})
@@ -555,7 +688,7 @@ def main():
         story_mem[c["cluster"]] = {
             "last_ts": utcnow().isoformat(),
             "last_title": c["title"],
-            "last_context": (source_text or "")[:3000],  # cap for file size
+            "last_context": (source_text or "")[:3000],
         }
 
     if created:
@@ -585,7 +718,7 @@ def main():
     headlines_src = manifest[:HEADLINES_COUNT]
     headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
 
-    # ticker built from interests (strict)
+    # ticker from interests
     ticker_titles: List[str] = []
     for topic in interests:
         for itm in google_news_rss(topic, limit=2):
@@ -619,7 +752,8 @@ def main():
     idx = replace_block(idx, "<!--TICKER-->",   "<!--/TICKER-->",   ticker_text)
     idx = replace_block(idx, "<!--TRENDING-->", "<!--/TRENDING-->", trending_html)
     idx = replace_block(idx, "<!--WEATHER-->",  "<!--/WEATHER-->",  weather_text)
-    with open(INDEX, "w", encoding="utf-8") as f: f.write(idx)
+    with open(INDEX, "w", encoding="utf-8") as f:
+        f.write(idx)
 
 if __name__ == "__main__":
     main()
