@@ -42,17 +42,15 @@ ARCHIVE_TPL   = os.path.join(TPL_DIR, "articles_index.html.j2")
 INDEX         = os.path.join(BASE, "index.html")
 
 DEFAULT_INTERESTS = [
-    "alien technology","ufo sightings","government cover-ups","advanced propulsion systems","secret military projects",
-    "deep state operations","psychic phenomena","mind control experiments","space anomalies","time travel research",
-    "parallel universes","ancient civilizations","occult rituals in politics","false flag operations",
-    "unexplained disappearances","cryptid sightings","weather modification programs","AI surveillance",
-    "quantum computing breakthroughs","black budget programs"
+    "UFOs","Comet 3I ATLAS"
 ]
 
 # windows/limits
-NEWS_LOOKBACK_HOURS = 24
-DEDUP_WINDOW_HOURS  = 72
-NUM_PER_RUN         = 4
+NEWS_LOOKBACK_HOURS      = 24
+BACKFILL_LOOKBACK_HOURS  = 96
+DEDUP_WINDOW_HOURS       = 72
+NUM_PER_RUN              = 8   # increased
+CAP_PER_TOKEN            = 2   # allow two similar topics in a run
 
 # homepage counts
 SLIDER_LATEST   = 4
@@ -80,13 +78,32 @@ STOPWORDS = {"the","a","an","and","or","but","for","nor","on","in","at","to","fr
 UA_HEADERS   = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36", "Accept-Language": "en-US,en;q=0.9"}
 UA_GOOGLEBOT = {"User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "Accept-Language": "en-US,en;q=0.9"}
 
+# ===== Focused query packs (Plan A) =====
+UFO_QUERIES = [
+    "UFO OR UAP",
+    "\"unidentified aerial phenomena\"",
+    "Pentagon UAP",
+    "NORAD UFO",
+    "Navy UAP",
+    "MUFON report",
+    "UFO Canada",
+    "UFO sighting police"
+]
+
+COMET_QUERIES = [
+    "\"Comet 3I ATLAS\"",
+    "\"3I/ATLAS\"",
+    "\"C/2019 Y4\" ATLAS",
+    "ATLAS comet discovery",
+    "interstellar comet ATLAS"
+]
+
+REDDIT_SUBS = ["UFOs", "UAP", "HighStrangeness", "Astronomy"]
+
 # ===== Interest weighting =====
 DEFAULT_WEIGHTS = {
-    "alien technology": 5.0, "ufo sightings": 5.0, "government cover-ups": 4.5, "advanced propulsion systems": 4.5,
-    "secret military projects": 4.0, "deep state operations": 4.5, "psychic phenomena": 4.0, "mind control experiments": 4.0,
-    "space anomalies": 5.0, "time travel research": 4.5, "parallel universes": 4.0, "ancient civilizations": 4.5,
-    "occult rituals in politics": 4.5, "false flag operations": 4.5, "unexplained disappearances": 4.0, "cryptid sightings": 3.5,
-    "weather modification programs": 4.0, "AI surveillance": 4.0, "quantum computing breakthroughs": 3.5, "black budget programs": 4.5
+    "ufos": 5.0,
+    "comet 3i atlas": 5.0
 }
 
 def load_interests_weighted() -> List[Tuple[str, float]]:
@@ -152,7 +169,7 @@ INTEREST_SYNONYMS: Dict[str, Set[str]] = {
     "911 theories": {"9/11","911","september 11","world trade center","wtc","pentagon","building 7"},
     "joe rogan podcasts": {"joe rogan","jre","rogan podcast","spotify rogan"},
     "president trump": {"donald trump","president trump","trump"},
-    "comet 3i atlas": {"comet atlas","3i atlas","c/2019 y4","atlas comet"},
+    "comet 3i atlas": {"comet atlas","3i atlas","c/2019 y4","atlas comet","3i/atlas"}
 }
 def expand_interest_keywords(interest: str) -> Set[str]:
     base = {interest.lower().strip()}
@@ -186,9 +203,29 @@ def google_news_rss(query: str, limit: int = 28) -> List[Dict]:
     negatives = "-Alienware -laptop -gaming -coupon -promo -deal -shopping"
     q = urllib.parse.quote(f"{q_core} {negatives}")
     url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+    return _rss_to_items(url, limit=limit)
+
+def bing_news_rss(query: str, limit: int = 28) -> List[Dict]:
+    q = urllib.parse.quote(query)
+    url = f"https://www.bing.com/news/search?q={q}&format=rss"
+    return _rss_to_items(url, limit=limit)
+
+def reddit_rss(sub: str, limit: int = 25) -> List[Dict]:
+    url = f"https://www.reddit.com/r/{sub}/.rss"
+    items = _rss_to_items(url, limit=limit, reddit=True)
+    out = []
+    for it in items:
+        # Try to extract first external link from description/content
+        ext = extract_external_from_reddit(it.get("description",""), it.get("link",""))
+        if ext and "reddit.com" not in urlparse(ext).netloc.lower():
+            it["link"] = ext
+            out.append(it)
+    return out
+
+def _rss_to_items(url: str, limit: int = 28, reddit: bool = False) -> List[Dict]:
     out = []
     try:
-        r = requests.get(url, timeout=15); r.raise_for_status()
+        r = requests.get(url, timeout=15, headers=UA_HEADERS); r.raise_for_status()
         root = ET.fromstring(r.text)
         for item in root.findall(".//item")[:limit]:
             title = (item.findtext("title") or "").strip()
@@ -196,13 +233,30 @@ def google_news_rss(query: str, limit: int = 28) -> List[Dict]:
             pub   = (item.findtext("pubDate") or "").strip()
             if not title or not link: continue
             if is_advertorial(title, link): continue
-            dt = parsedate_to_datetime(pub) if pub else datetime.utcnow()
+            try:
+                dt = parsedate_to_datetime(pub) if pub else datetime.utcnow()
+            except Exception:
+                dt = datetime.utcnow()
             if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
             else: dt = dt.astimezone(timezone.utc)
-            out.append({"title": title, "link": link, "date": dt})
+            # Reddit items may include content:encoded
+            desc = item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded") or item.findtext("description") or ""
+            out.append({"title": title, "link": link, "date": dt, "description": desc})
     except Exception as e:
         print("RSS error:", e)
     return out
+
+def extract_external_from_reddit(desc_html: str, fallback_link: str) -> Optional[str]:
+    try:
+        if not desc_html or not BeautifulSoup: return None
+        soup = BeautifulSoup(desc_html, "lxml")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("http") and "reddit.com" not in urlparse(href).netloc.lower():
+                return href
+    except Exception:
+        pass
+    return None
 
 # ===== Extract text (HTML → text; Playwright fallback in scraper) =====
 def try_jsonld_article(soup: BeautifulSoup) -> Optional[str]:
@@ -327,11 +381,12 @@ def jaccard(a: Set[str], b: Set[str]) -> float:
     inter = len(a & b); union = len(a | b)
     return inter/union if union else 0.0
 def is_same_story(title: str, recent_titles: List[str], recent_sigs: List[Set[str]]) -> bool:
+    # RELAX dedup to allow more near-duplicates through
     sig = topic_signature(title)
     for rt, rs in zip(recent_titles, recent_sigs):
-        if difflib.SequenceMatcher(None, title.lower(), rt.lower()).ratio() >= 0.82: return True
-        if jaccard(sig, rs) >= 0.6: return True
-        if len(sig) >= 4 and len(sig & rs) >= len(sig) - 1: return True
+        if difflib.SequenceMatcher(None, title.lower(), rt.lower()).ratio() >= 0.92: return True
+        if jaccard(sig, rs) >= 0.75: return True
+        if len(sig) >= 5 and len(sig & rs) >= len(sig) - 1: return True
     return False
 
 def recency_score(dt: datetime) -> float:
@@ -345,11 +400,11 @@ def novelty_score(title: str, recent_titles: List[str], recent_sigs: List[Set[st
     return max(0.0, 1.0 - best)
 def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int], weight: float) -> float:
     r = recency_score(dt); n = novelty_score(title, recent_titles, recent_sigs)
-    dom_penalty = 0.12 if domain in recent_domains else 0.0
+    dom_penalty = 0.10 if domain in recent_domains else 0.0
     sig = topic_signature(title); over = max((token_freq.get(t,0) for t in sig), default=0)
-    tok_penalty = min(0.20, 0.04 * over)
+    tok_penalty = min(0.15, 0.03 * over)
     base = 0.55*r + 0.35*n - dom_penalty - tok_penalty
-    return base * (0.75 + 0.25 * (weight/5.0))  # weight tilt (up to +25%)
+    return base * (0.75 + 0.25 * (weight/5.0))  # weight tilt
 
 def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
     cut = utcnow() - timedelta(hours=window_hours)
@@ -365,25 +420,64 @@ def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[s
             if d: domains.add(d)
     return titles, sigs, domains, token_freq
 
-# ===== Writer =====
+# ===== Writer (newsroom prompt kept) =====
 def openai_article(topic: str, source_title: str, source_urls: List[str], source_text: str) -> str:
-    if not OPENAI_API_KEY: raise RuntimeError("OPENAI_API_KEY missing")
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY missing")
     context = source_text[:7000]
     src_list = "\n".join(f"- {u}" for u in source_urls[:6])
-    prompt = (
-        "Write ~800 words in an outrageous, sensational, skeptical newspaper tone while being faithful to the SOURCE TEXT.\n"
-        "MANDATORY: include concrete facts (names, dates, locations, agencies, quotes, numbers, timelines). Attribute claims. "
-        "Output HTML using only <p>, <h2>, <blockquote>.\n\n"
-        f"HEADLINE: {source_title}\nTOPIC: {topic}\nSOURCES:\n{src_list}\n\nSOURCE TEXT:\n{context}\n"
+
+    SYSTEM_MSG = (
+        "You are a wire-service news writer. Write in a clear, neutral, fact-first tone (inverted pyramid).\n"
+        "Mimic Canadian newsroom style like CP/CTV:\n"
+        "- Lead with who/what/where/when in the first sentence.\n"
+        "- Keep sentences short; avoid speculation and loaded language.\n"
+        "- Attribute claims (“police said”, “according to the report”).\n"
+        "- Do not invent facts. If a detail is missing in SOURCE TEXT, write “not disclosed”.\n"
+        "- Include precise times, locations, agencies, and named sources when present.\n"
+        "- Prefer active voice, concrete verbs, plain words.\n"
+        "- Use present perfect/ simple past consistently for reported events.\n\n"
+        "Output clean HTML using ONLY these tags: <h2>, <p>, <ul>, <li>, <blockquote>, <strong>, <em>.\n"
+        "No inline styles, no external links in body (we provide Sources separately).\n"
+        "Length target: ~700–900 words if SOURCE TEXT is rich; ~300–500 words if sparse."
     )
+
+    USER_TMPL = (
+        "Write a straight-news article that mirrors the tone and structure of the sample.\n\n"
+        f"HEADLINE: {source_title}\n"
+        f"TOPIC: {topic}\n\n"
+        "STRUCTURE:\n"
+        "1) Lede (1 paragraph): who/what/where/when; injuries/fatalities if any.\n"
+        "2) Nutgraf (1 paragraph): why this matters / what authorities are doing now.\n"
+        "3) Key facts (bulleted): times, locations, numbers, agencies, arrests, status.\n"
+        "4) Timeline (subhead + 1–3 short paragraphs): what happened in order.\n"
+        "5) Official statements (quotes, attributed in <blockquote>).\n"
+        "6) Context (subhead + 1–2 short paragraphs): prior incidents, policies, trends.\n"
+        "7) What’s next (1 short paragraph): investigations, charges, deadlines, next steps.\n\n"
+        "CONSTRAINTS:\n"
+        "- Use only details from SOURCE TEXT below. Do NOT speculate or add outside facts.\n"
+        "- If a required detail is missing, write “not disclosed”.\n"
+        "- Use metric units and local spellings when present in SOURCE TEXT.\n"
+        "- Keep proper nouns exactly as in SOURCE TEXT.\n\n"
+        "RENDERING RULES:\n"
+        "- Use <h2> to label sections “Key facts”, “Timeline”, “Context”, “What’s next”.\n"
+        "- Use <ul><li> for Key facts (3–8 bullets max).\n"
+        "- Quotes must be inside <blockquote> with attribution in the same block.\n"
+        "- Use <strong> sparingly for crucial numbers/names once.\n\n"
+        "SOURCES (for reference list, not to cite inline):\n"
+        f"{src_list}\n\n"
+        "SOURCE TEXT:\n"
+        f"{context}"
+    )
+
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
         json={
             "model": "gpt-4o-mini",
             "messages": [
-                {"role":"system","content":"You are a sensational but accurate columnist. Never fabricate; stick to the provided source text."},
-                {"role":"user","content": prompt},
+                {"role": "system", "content": SYSTEM_MSG},
+                {"role": "user", "content": USER_TMPL},
             ],
             "temperature": 0.6,
         },
@@ -449,62 +543,93 @@ def main():
     interests_weighted = load_interests_weighted()  # List[(interest, weight)]
     manifest  = load_manifest()
     seen_fps  = {a["fingerprint"] for a in manifest if a.get("fingerprint")}
-    cutoff    = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
 
     # memory for dedup
     recent_titles, recent_sigs, recent_domains, token_freq = build_recent_memory(manifest, DEDUP_WINDOW_HOURS)
 
-    # collect candidates strictly by interests
+    # Build candidate list for each interest with multi-source + query packs
     all_candidates: List[Dict] = []
     for interest, weight in interests_weighted:
-        feed = google_news_rss(interest, limit=32)
-        for it in feed:
-            dt = it["date"]
-            if dt < cutoff: continue
-            title, link = it["title"], it["link"]
-            if is_advertorial(title, link): continue
-            fp = fingerprint_key(title, link)
-            if fp in seen_fps: continue
-            if is_same_story(title, recent_titles, recent_sigs): continue
-            dom = urlparse(link).netloc.lower().split(":")[0]
-            if dom.startswith("www."): dom = dom[4:]
-            score = score_candidate(title, dt, dom, recent_titles, recent_sigs, recent_domains, token_freq, weight)
-            all_candidates.append({"interest": interest, "weight": weight, "title": title, "link": link, "date": dt, "domain": dom, "score": score})
+        if "comet" in interest.lower():
+            queries = COMET_QUERIES
+        else:
+            queries = UFO_QUERIES
 
-    # sort by score (weight-adjusted recency/novelty)
-    all_candidates.sort(key=lambda x: x["score"], reverse=True)
+        # 1) News search feeds
+        for q in queries:
+            for it in google_news_rss(q, limit=28):
+                all_candidates.append({**it, "interest": interest, "weight": weight})
+            for it in bing_news_rss(q, limit=28):
+                all_candidates.append({**it, "interest": interest, "weight": weight})
+
+        # 2) Reddit external links
+        for sub in REDDIT_SUBS:
+            for it in reddit_rss(sub, limit=20):
+                all_candidates.append({**it, "interest": interest, "weight": weight})
+
+    # Normalize: drop ads, de-dupe by link host+path
+    seen_links: Set[str] = set()
+    normed: List[Dict] = []
+    for it in all_candidates:
+        link = it.get("link","").strip()
+        if not link: continue
+        try:
+            u = urlparse(link)
+            key = f"{u.netloc.lower().lstrip('www.')}{u.path}"
+        except Exception:
+            key = link
+        if key in seen_links: continue
+        seen_links.add(key)
+        normed.append(it)
+
+    # Cutoffs: primary window 24h; backfill to 96h if needed
+    cutoff_main    = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
+    cutoff_backfill= utcnow() - timedelta(hours=BACKFILL_LOOKBACK_HOURS)
+    primary = [x for x in normed if x["date"] >= cutoff_main]
+    backfill= [x for x in normed if cutoff_backfill <= x["date"] < cutoff_main]
+
+    # Score primary first
+    def score_row(row: Dict) -> float:
+        title = row["title"]; dt = row["date"]
+        d = urlparse(row["link"]).netloc.lower().split(":")[0]
+        if d.startswith("www."): d = d[4:]
+        return score_candidate(title, dt, d, recent_titles, recent_sigs, recent_domains, token_freq, row["weight"])
+
+    ranked = sorted(primary, key=score_row, reverse=True)
+    if len(ranked) < NUM_PER_RUN:
+        ranked += sorted(backfill, key=score_row, reverse=True)
 
     used_img_ids: Set[str] = set()
     created = []
     run_tokens: Dict[str,int] = {}
-    CAP_PER_TOKEN = 1
     attempts = 0
-    MAX_ATTEMPTS = 60
+    MAX_ATTEMPTS = 150  # allow more passes due to larger candidate pool
 
     def can_take(title: str) -> bool:
         sig = topic_signature(title)
         if any(run_tokens.get(t,0) >= CAP_PER_TOKEN for t in sig): return False
         for made in created:
-            if difflib.SequenceMatcher(None, title.lower(), made["title"].lower()).ratio() >= 0.82:
+            if difflib.SequenceMatcher(None, title.lower(), made["title"].lower()).ratio() >= 0.92:
                 return False
         return True
 
     i = 0
-    while len(created) < NUM_PER_RUN and attempts < MAX_ATTEMPTS and i < len(all_candidates):
+    while len(created) < NUM_PER_RUN and attempts < MAX_ATTEMPTS and i < len(ranked):
         attempts += 1
-        cand = all_candidates[i]; i += 1
+        cand = ranked[i]; i += 1
+        if is_advertorial(cand["title"], cand["link"]): continue
         if not can_take(cand["title"]): continue
 
         # Get full text (fallback to Playwright in scraper)
         source_text = fetch_page_text(cand["link"], min_chars=250)
         if len(source_text) < 250: continue
 
-        # Enforce strict relevance to THIS interest using the actual article text
+        # Strict relevance to the focus interest
         if not passes_interest_relevance(cand["interest"], cand["title"], source_text):
             continue
 
         # Try to scrape best image from the page
-        scraped_text, scraped_imgs = scrape_article(cand["link"])
+        _scraped_text, scraped_imgs = scrape_article(cand["link"])
         hero_rel = FALLBACK
         if scraped_imgs:
             try:
@@ -512,7 +637,6 @@ def main():
             except Exception:
                 hero_rel = FALLBACK
         if hero_rel == FALLBACK:
-            # fallback to Unsplash on the interest itself
             hero_rel = unsplash_unique(cand["interest"], used_img_ids)
 
         # Write article
@@ -562,7 +686,7 @@ def main():
 
     # ticker/trending
     ticker_titles: List[str] = []
-    for interest, _w in interests_weighted:
+    for interest, _w in load_interests_weighted():
         for itm in google_news_rss(interest, limit=2):
             ticker_titles.append(itm["title"])
             if len(ticker_titles) >= TICKER_COUNT: break
