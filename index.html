@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Search 433 — Live Headlines & Latest</title>
+  <meta name="description" content="Search 433 — mobile-first automated news with a live homepage and permanent archive.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="slider.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded',()=>{
+      const el = document.getElementById('clock');
+      if(!el) return;
+      const tz  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const fmt = new Intl.DateTimeFormat([], {hour:'2-digit', minute:'2-digit'});
+      const dateFmt = new Intl.DateTimeFormat([], {weekday:'short', month:'short', day:'2-digit'});
+      function tick(){
+        const d=new Date();
+        el.innerHTML = `<div class="now-time">${fmt.format(d)}</div><div class="now-date">${dateFmt.format(d)} · ${tz}</div>`;
+      }
+      tick(); setInterval(tick,30000);
+    });
+  </script>
+</head>
+<body class="theme-darkblue">
+  <header class="site-header">
+    <div class="container row between middle">
+      <a class="brand" href="index.html" aria-label="Search 433">
+        <svg class="logo-svg" viewBox="0 0 160 40" width="160" height="40" aria-hidden="true">
+          <defs>
+            <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7fb2ff"/>
+              <stop offset="100%" stop-color="#2f6fff"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" rx="10" ry="10" width="52" height="40" fill="url(#g433)"></rect>
+          <text x="26" y="26" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
+          <text x="64" y="26" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
+        </svg>
+      </a>
+      <nav class="nav">
+        <a href="index.html" class="nav-link active">Home</a>
+        <a href="articles/index.html" class="nav-link">Articles</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="frontgrid">
+    <div class="container grid-outer">
+      <div class="grid-main">
+        <div class="slider card" data-autoplay="7000">
+          <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
+          <div class="slides">
+            <!--SLIDES-->
+<a class='slide' href='articles/how-hubble-s-sharpest-view-unveils-the-secrets-of-3i-atlas-msn.html' style="background-image:url('assets/comet-3i-atlas-4vuyhuq0tlg.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>How Hubble’s Sharpest View Unveils the Secrets of 3I/ATLAS - MSN</h2></div></a>
+<a class='slide' href='articles/nasa-s-juno-could-catch-mysterious-interstellar-comet-in-daring-2026-flyby-the-daily-galaxy.html' style="background-image:url('assets/nasa-s-juno-could-catch-mysterious-interstellar-co.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>NASA’s Juno Could Catch Mysterious Interstellar Comet in Daring 2026 Flyby - The Daily Galaxy</h2></div></a>
+<a class='slide' href='articles/hubble-reveals-new-details-about-alien-comet-3i-atlas-the-weather-network.html' style="background-image:url('assets/hubble-reveals-new-details-about-alien-comet-3i-at.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>Hubble reveals new details about alien comet 3I/ATLAS - The Weather Network</h2></div></a>
+<a class='slide' href='articles/hailstorm-in-jambi-not-linked-to-weather-modification-efforts-bmkg-says-the-jakarta-post.html' style="background-image:url('assets/hailstorm-in-jambi-not-linked-to-weather-modificat.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>Hailstorm in Jambi not linked to weather modification efforts, BMKG says - The Jakarta Post</h2></div></a>
+<!--/SLIDES-->
+          </div>
+          <button class="slider-btn next" aria-label="Next">&#10095;</button>
+          <div class="dots" aria-hidden="true"></div>
+        </div>
+
+        <section class="ticker">
+          <div class="ticker-inner card">
+            <span class="tick-label">LIVE</span>
+            <marquee behavior="scroll" direction="left" scrollamount="6">
+              <!--TICKER-->
+911 theories: Is Jennifer Love Hewitt pregnant in real life? Revealed here | Hollywood - Hindustan Times - Hindustan Times · 3I/ATLAS Is Very Actively Releasing Water - Universe Today · As NASA Missions Study Interstellar Comet, Hubble Makes Size Estimate - NASA Science (.gov) · Meet a PA mayor who embraces UFOs and small town quirkiness - Spotlight PA · ‘What is that?’: Reported UFO sightings across Mass. leave stargazers puzzled - Boston 25 News · The 10 Best 'Joe Rogan Experience' Podcast Episodes Of All Time - iHeart · On Joe Rogan’s podcast, Bill Murray explains how top female instructors are improving his game - Golf Digest · Sen. Rounds will renew push for UAP disclosure legislation - NewsNation · UAP disclosure advocates call for expanded reforms in fiscal 2026 NDAA - DefenseScoop · New UFO hearings continue an "endless loop" of sensation - Big Think · Inside Capitol Hill’s Latest UFO Hearings - Time Magazine · Professor Brian Cox Shares Insightful Perspective On Recent UAP Disclosures - higgypop.com
+<!--/TICKER-->
+            </marquee>
+          </div>
+        </section>
+
+        <!-- Featured cards row (fills desktop whitespace; mobile stacks nicely) -->
+        <section class="featured">
+          <h3 class="featured-title">Featured</h3>
+          <div class="featured-cards">
+            <!--FEATURED-->
+<a class='card' href='articles/interstellar-comet-3i-atlas-races-through-solar-system-at-record-speed-ainvest.html'><div class='card-media' style="background-image:url('assets/interstellar-comet-3i-atlas-races-through-solar-sy.png')"></div><div class='card-body'><h4 class='card-title'>Interstellar Comet 3I/ATLAS Races Through Solar System at Record Speed - AInvest</h4><div class='card-meta'>2025-08-16 00:03 UTC</div></div></a>
+<a class='card' href='articles/resident-reports-ufo-descending-near-new-york-state-thruway-wyrk.html'><div class='card-media' style="background-image:url('assets/ufos-1w2fnly-tci.jpg')"></div><div class='card-body'><h4 class='card-title'>Resident Reports UFO Descending Near New York State Thruway - WYRK</h4><div class='card-meta'>2025-08-15 16:31 UTC</div></div></a>
+<a class='card' href='articles/interstellar-invader-comet-3i-atlas-is-packed-with-water-ice-that-could-be-older-than-earth-msn.html'><div class='card-media' style="background-image:url('assets/comet-3i-atlas-elltivivy4.jpg')"></div><div class='card-body'><h4 class='card-title'>Interstellar invader Comet 3I/ATLAS is packed with water ice that could be older than Earth - MSN</h4><div class='card-meta'>2025-08-15 22:41 UTC</div></div></a>
+<a class='card' href='articles/did-this-man-record-a-ufo-while-playing-fetch-with-his-dog-outdoors-with-bear-grylls.html'><div class='card-media' style="background-image:url('assets/did-this-man-record-a-ufo-while-playing-fetch-with.jpg')"></div><div class='card-body'><h4 class='card-title'>Did This Man Record a UFO While Playing Fetch With His Dog? - Outdoors with Bear Grylls</h4><div class='card-meta'>2025-08-15 22:02 UTC</div></div></a>
+<a class='card' href='articles/meet-a-mayor-the-small-eccentric-pa-city-where-even-ufos-like-to-drop-by-pennlive-com.html'><div class='card-media' style="background-image:url('assets/meet-a-mayor-the-small-eccentric-pa-city-where-eve.jpg')"></div><div class='card-body'><h4 class='card-title'>Meet a Mayor: The small, eccentric Pa. city where even UFOs like to drop by - PennLive.com</h4><div class='card-meta'>2025-08-15 11:33 UTC</div></div></a>
+<a class='card' href='articles/chicago-public-schools-investigation-finds-systemic-problem-at-local-high-school-nbc-5-chicago.html'><div class='card-media' style="background-image:url('assets/chicago-public-schools-investigation-finds-systemi.jpg')"></div><div class='card-body'><h4 class='card-title'>Chicago Public Schools investigation finds ‘systemic problem&#x27; at local high school - NBC 5 Chicago</h4><div class='card-meta'>2025-08-16 02:33 UTC</div></div></a>
+<!--/FEATURED-->
+          </div>
+        </section>
+      </div>
+
+      <aside class="grid-rail">
+        <div class="rail-block card">
+          <div class="rail-title">Now</div>
+          <div id="clock" class="rail-now">—:—</div>
+          <div class="rail-title" style="border-top:1px solid var(--line)">Toronto Weather</div>
+          <div class="rail-now">
+            <!--WEATHER-->
+23.1°C (feels 25.0°C), wind 12.1 km/h
+<!--/WEATHER-->
+          </div>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Latest Headlines</div>
+          <ul class="rail-list">
+            <!--HEADLINES-->
+<li><a href="articles/how-hubble-s-sharpest-view-unveils-the-secrets-of-3i-atlas-msn.html">How Hubble’s Sharpest View Unveils the Secrets of 3I/ATLAS - MSN</a></li>
+<li><a href="articles/nasa-s-juno-could-catch-mysterious-interstellar-comet-in-daring-2026-flyby-the-daily-galaxy.html">NASA’s Juno Could Catch Mysterious Interstellar Comet in Daring 2026 Flyby - The Daily Galaxy</a></li>
+<li><a href="articles/hubble-reveals-new-details-about-alien-comet-3i-atlas-the-weather-network.html">Hubble reveals new details about alien comet 3I/ATLAS - The Weather Network</a></li>
+<li><a href="articles/hailstorm-in-jambi-not-linked-to-weather-modification-efforts-bmkg-says-the-jakarta-post.html">Hailstorm in Jambi not linked to weather modification efforts, BMKG says - The Jakarta Post</a></li>
+<li><a href="articles/interstellar-comet-3i-atlas-races-through-solar-system-at-record-speed-ainvest.html">Interstellar Comet 3I/ATLAS Races Through Solar System at Record Speed - AInvest</a></li>
+<li><a href="articles/resident-reports-ufo-descending-near-new-york-state-thruway-wyrk.html">Resident Reports UFO Descending Near New York State Thruway - WYRK</a></li>
+<li><a href="articles/interstellar-invader-comet-3i-atlas-is-packed-with-water-ice-that-could-be-older-than-earth-msn.html">Interstellar invader Comet 3I/ATLAS is packed with water ice that could be older than Earth - MSN</a></li>
+<li><a href="articles/did-this-man-record-a-ufo-while-playing-fetch-with-his-dog-outdoors-with-bear-grylls.html">Did This Man Record a UFO While Playing Fetch With His Dog? - Outdoors with Bear Grylls</a></li>
+<li><a href="articles/meet-a-mayor-the-small-eccentric-pa-city-where-even-ufos-like-to-drop-by-pennlive-com.html">Meet a Mayor: The small, eccentric Pa. city where even UFOs like to drop by - PennLive.com</a></li>
+<li><a href="articles/chicago-public-schools-investigation-finds-systemic-problem-at-local-high-school-nbc-5-chicago.html">Chicago Public Schools investigation finds ‘systemic problem&#x27; at local high school - NBC 5 Chicago</a></li>
+<!--/HEADLINES-->
+          </ul>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Trending Now</div>
+          <ul class="rail-list">
+            <!--TRENDING-->
+<li><a href="https://news.google.com/rss/articles/CBMicEFVX3lxTE14Y09IUjl1V2xVUGo2d21jYWJicHhUYzRLVExKYmhrc2wxUnhmakpkQURlNnlicnNGM3hBXzNUQVg2QU13Yzdra1VtR3NMYVlHSHRHaXlBVmxvYW11cUlQRWdKTjllQTg5MWFRakpCUmQ?oc=5" target="_blank" rel="noopener">No concessions, no ceasefire: how Putin outplayed Trump in Anchorage - Financial Times</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMilwFBVV95cUxNX3pVQ3FqSTBuaHNtdnk0RkZxZm54c3dmbDYwNkZOSjlESG1PYmV0eXJmZlI2ZlBpWjl3VjdsZlhvTzBYSExNM01iOS1ndW9YYkFkcUExd0ZXRlJaOU9udmk2NmFBS3R1bW43elRyWmw0SHRxQjcyMjd0MC1qVW1jb25XaVF1dE80RDVWdkRJUVVLV2hJN2Y0?oc=5" target="_blank" rel="noopener">Republican-led states to send hundreds more National Guard troops to D.C. - The Washington Post</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMipAFBVV95cUxNYzVsVXdNQ3BPMDFtMW5MRmh1R2UyY25OeXJCZU9HVXZrVFJLa2xLLW5UU2FhZUlOOHhPc1R4dVFCS2RYN29lZS1UajkwZ2gzMTRWdGhDTnVWREJ1Q1RiQTRTVU5ZbHZtZGt3WnYyTjVXazFsaFJxRjJqeDAtZ1Jnc0k3UTdCYUNQMnl2WHdsQkVrSEpXdnVZWVJ2SUdFN01nZlY3UA?oc=5" target="_blank" rel="noopener">Erin downgraded to Category 3 hurricane, NHC says - Reuters</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMimgFBVV95cUxPaUpLUWhvb2hDNGl4RWc3RDA3XzFaMXlXekY3WUdlMGFfVTRZSGNwVmpVblVNRW5nQmhVWnFBYjQ3d29ScjNfdGd2aWlJQ19BUVZ6MDhCamZrTV92aGIzMDh1WHNJTzNOak0wU0pUQVNsRy1tMnBGZG9fd0d3NkZkdWNXSERCbkNGc2JLT2VxT19oR282NzFIVmF3?oc=5" target="_blank" rel="noopener">Israel prepares to move Palestinians to southern Gaza as Israelis urge mass protest over war - AP News</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMirgFBVV95cUxNUVh5R3JzVzRCbkxiVW5ZZnNBSkMwMHMweVd3dWZQVlloY0p0M25WaUpibDZxakk3WGpoOF9hdFN5bDc1TzFZaXg4dnV5WkVyNGY2SDVSdHMyZThFaThLZlpzU21lSUZLdFhWb2xIZ2czRUw0WEhkSEpFV3JzVExISE0xUW9TMmZUajNOaVFpYUFpcXpSNHR5a1p4M2wtemV5cm9Wb205c05OTnJPUHc?oc=5" target="_blank" rel="noopener">Immigration agent fires shots at vehicle with people inside in San Bernardino operation - Los Angeles Times</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMilAFBVV95cUxPc3pFOXNNbW1FM2wtM0FfdTBZX3ByZDFVbWFzcWpJOEl2XzZmemZnd0dsc3lvelN2MUdUS05YVW5aSWtuSkVDMUY5Yko3ODltUDFKSDRDdEpQSm9YZC1Tb0NabF9zQi1LMUdya2RKNXFGaEdxVVZfcHpKa25oOEdmQ1FZTG1ENmJUemFRM1ZNclItblk5?oc=5" target="_blank" rel="noopener">Protesters Gather to Oppose Trump’s Push on Redistricting - The New York Times</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMi4gFBVV95cUxOdkNYRDRtY2lPNnhzNDNucWI0X1ZIREZuYW9UeUN6VmI1MlVrU1RqUWFYelJZcGZwa1NNOUxhSTF4eG85X3Zqb2d1Vmw2TXBVdUd4MjRoMUJBQUZNSTRUUWNlY2VmdWxjY3U5OU8xUExwZVVyZ0h2OVpFYmNnOEZlQy01eVVZSThESVZFR1JVMzBEdl9jMjlJSmtNUHY5TU5iel95QmRTdi04QWZod0E5ODNkWEhLWUpGS1BtWlU1dFBqUThPc2ZJNV94VjVfVVVjY0dLY2dSa2hBVlhxWWFIUmp3?oc=5" target="_blank" rel="noopener">Ukraine war briefing: Zelenskyy says Russia refusing ceasefire ‘complicates the situation’ for ending war - The Guardian</a></li>
+<!--/TRENDING-->
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>© <span id="y"></span> Search 433</p>
+      <p class="muted">Automated reporting. Articles are preserved in the archive.</p>
+    </div>
+    <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+  </footer>
+</body>
+</html>
