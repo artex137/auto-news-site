@@ -399,11 +399,21 @@ def novelty_score(title: str, recent_titles: List[str], recent_sigs: List[Set[st
         if sim > best: best = sim
     return max(0.0, 1.0 - best)
 def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int], weight: float) -> float:
-    r = recency_score(dt); n = novelty_score(title, recent_titles, recent_sigs)
-    dom_penalty = 0.10 if domain in recent_domains else 0.0
-    sig = topic_signature(title); over = max((token_freq.get(t,0) for t in sig), default=0)
+    """Return a score for a candidate headline.
+
+    If the domain has appeared recently, we hard skip by returning a
+    negative score. This provides stronger protection against repeating
+    the same source across runs.
+    """
+    if domain in recent_domains:
+        return -1.0
+
+    r = recency_score(dt)
+    n = novelty_score(title, recent_titles, recent_sigs)
+    sig = topic_signature(title)
+    over = max((token_freq.get(t,0) for t in sig), default=0)
     tok_penalty = min(0.15, 0.03 * over)
-    base = 0.55*r + 0.35*n - dom_penalty - tok_penalty
+    base = 0.55*r + 0.35*n - tok_penalty
     return base * (0.75 + 0.25 * (weight/5.0))  # weight tilt
 
 def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
@@ -602,6 +612,7 @@ def main():
     used_img_ids: Set[str] = set()
     created = []
     run_tokens: Dict[str,int] = {}
+    run_domains: Set[str] = set()
     attempts = 0
     MAX_ATTEMPTS = 150  # allow more passes due to larger candidate pool
 
@@ -617,6 +628,11 @@ def main():
     while len(created) < NUM_PER_RUN and attempts < MAX_ATTEMPTS and i < len(ranked):
         attempts += 1
         cand = ranked[i]; i += 1
+
+        domain = urlparse(cand["link"]).netloc.lower().split(":")[0]
+        if domain.startswith("www."): domain = domain[4:]
+        if domain in run_domains: continue
+
         if is_advertorial(cand["title"], cand["link"]): continue
         if not can_take(cand["title"]): continue
 
@@ -659,6 +675,7 @@ def main():
         created.append(cand)
         for t in topic_signature(cand["title"]):
             run_tokens[t] = run_tokens.get(t,0) + 1
+        run_domains.add(domain)
 
     # Archive + homepage if anything new
     if created:
