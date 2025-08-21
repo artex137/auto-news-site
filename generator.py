@@ -617,6 +617,8 @@ def main():
     while len(created) < NUM_PER_RUN and attempts < MAX_ATTEMPTS and i < len(ranked):
         attempts += 1
         cand = ranked[i]; i += 1
+        fp = fingerprint_key(cand["title"], cand["link"])
+        if fp in seen_fps: continue
         if is_advertorial(cand["title"], cand["link"]): continue
         if not can_take(cand["title"]): continue
 
@@ -652,9 +654,9 @@ def main():
         page_html = render_article_page(cand["title"], cand["title"], hero_rel, body_html, ts, sources_pretty)
         with open(os.path.join(ART_DIR, filename), "w", encoding="utf-8") as f: f.write(page_html)
 
-        fp = fingerprint_key(cand["title"], cand["link"])
         manifest.insert(0, {"title": cand["title"], "file": filename, "image": hero_rel, "date": ts, "source_url": cand["link"], "fingerprint": fp})
         save_manifest(manifest)
+        seen_fps.add(fp)
 
         created.append(cand)
         for t in topic_signature(cand["title"]):
