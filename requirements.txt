@@ -1,0 +1,10 @@
+# requirements.txt
+openai>=1.14
+jinja2
+requests
+gitpython
+beautifulsoup4
+lxml
+readability-lxml
+youtube-transcript-api
+playwright

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Search 433 — Live Headlines & Latest</title>
+  <meta name="description" content="Search 433 — mobile-first automated news with a live homepage and permanent archive.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="slider.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded',()=>{
+      const el = document.getElementById('clock');
+      if(!el) return;
+      const tz  = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const fmt = new Intl.DateTimeFormat([], {hour:'2-digit', minute:'2-digit'});
+      const dateFmt = new Intl.DateTimeFormat([], {weekday:'short', month:'short', day:'2-digit'});
+      function tick(){
+        const d=new Date();
+        el.innerHTML = `<div class="now-time">${fmt.format(d)}</div><div class="now-date">${dateFmt.format(d)} · ${tz}</div>`;
+      }
+      tick(); setInterval(tick,30000);
+    });
+  </script>
+</head>
+<body class="theme-darkblue">
+  <header class="site-header">
+    <div class="container row between middle">
+      <a class="brand" href="index.html" aria-label="Search 433">
+        <svg class="logo-svg" viewBox="0 0 160 40" width="160" height="40" aria-hidden="true">
+          <defs>
+            <linearGradient id="g433" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7fb2ff"/>
+              <stop offset="100%" stop-color="#2f6fff"/>
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" rx="10" ry="10" width="52" height="40" fill="url(#g433)"></rect>
+          <text x="26" y="26" text-anchor="middle" font-family="Inter, Arial" font-size="18" font-weight="800" fill="#fff">433</text>
+          <text x="64" y="26" font-family="DM Serif Display, serif" font-size="20" fill="#e9f0ff"><tspan font-style="italic">Search</tspan> 433</text>
+        </svg>
+      </a>
+      <nav class="nav">
+        <a href="index.html" class="nav-link active">Home</a>
+        <a href="articles/index.html" class="nav-link">Articles</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="frontgrid">
+    <div class="container grid-outer">
+      <div class="grid-main">
+        <div class="slider card" data-autoplay="7000">
+          <button class="slider-btn prev" aria-label="Previous">&#10094;</button>
+          <div class="slides">
+            <!--SLIDES-->
+<a class='slide' href='articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html' style="background-image:url('assets/ufos-w6uyr1wqg-i.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</h2></div></a>
+<a class='slide' href='articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html' style="background-image:url('assets/ufos-hek49mom39q.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</h2></div></a>
+<a class='slide' href='articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html' style="background-image:url('assets/ufos-m9pikkz3kyi.jpg')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</h2></div></a>
+<a class='slide' href='articles/germany-s-zdf-identifies-ufo-docs-from-espresso-media-international-c21media.html' style="background-image:url('assets/germany-s-zdf-identifies-ufo-docs-from-espresso-me.png')"><div class='slide-content'><div class='kicker'>Top Story</div><h2 class='slide-headline'>Germany’s ZDF identifies UFO docs from Espresso Media International - C21media</h2></div></a>
+<!--/SLIDES-->
+          </div>
+          <button class="slider-btn next" aria-label="Next">&#10095;</button>
+          <div class="dots" aria-hidden="true"></div>
+        </div>
+
+        <section class="ticker">
+          <div class="ticker-inner card">
+            <span class="tick-label">LIVE</span>
+            <marquee behavior="scroll" direction="left" scrollamount="6">
+              <!--TICKER-->
+Opinion | What if the Government Believes in U.F.O.s More Than You Do? - The New York Times · Meet a PA mayor who embraces UFOs and small town quirkiness - Spotlight PA · ‘Comet’ could be nuclear-powered, Harvard scientist says - NewsNation · Hubble Reveals a Rare Interstellar Comet Racing at 130,000 MPH Through Our Solar System - SciTechDaily
+<!--/TICKER-->
+            </marquee>
+          </div>
+        </section>
+
+        <!-- Featured cards row (fills desktop whitespace; mobile stacks nicely) -->
+        <section class="featured">
+          <h3 class="featured-title">Featured</h3>
+          <div class="featured-cards">
+            <!--FEATURED-->
+<a class='card' href='articles/germany-s-zdf-identifies-ufo-docs-from-espresso-media-international-c21media.html'><div class='card-media' style="background-image:url('assets/germany-s-zdf-identifies-ufo-docs-from-espresso-me.png')"></div><div class='card-body'><h4 class='card-title'>Germany’s ZDF identifies UFO docs from Espresso Media International - C21media</h4><div class='card-meta'>2025-08-19 08:40 UTC</div></div></a>
+<a class='card' href='articles/science-is-nourishing-avi-loeb-medium.html'><div class='card-media' style="background-image:url('assets/science-is-nourishing-avi-loeb-medium.jpg')"></div><div class='card-body'><h4 class='card-title'>Science is Nourishing - Avi Loeb – Medium</h4><div class='card-meta'>2025-08-14 23:01 UTC</div></div></a>
+<a class='card' href='articles/3i-atlas-do-not-hold-your-breath-for-aliens-universe-space-tech.html'><div class='card-media' style="background-image:url('assets/3i-atlas-do-not-hold-your-breath-for-aliens-univer.jpg')"></div><div class='card-body'><h4 class='card-title'>3I/ATLAS. Do not hold your breath for aliens - Universe Space Tech</h4><div class='card-meta'>2025-08-14 17:06 UTC</div></div></a>
+<a class='card' href='articles/what-should-humanity-do-on-the-day-after-an-interstellar-object-is-recognized-as-technological-avi-loeb-medium.html'><div class='card-media' style="background-image:url('assets/what-should-humanity-do-on-the-day-after-an-inters.jpg')"></div><div class='card-body'><h4 class='card-title'>What Should Humanity Do on the Day After an Interstellar Object is Recognized as Technological? - Avi Loeb – Medium</h4><div class='card-meta'>2025-08-15 11:41 UTC</div></div></a>
+<a class='card' href='articles/was-there-a-ufo-over-the-region-this-week-wamc.html'><div class='card-media' style="background-image:url('assets/was-there-a-ufo-over-the-region-this-week-wamc.jpg')"></div><div class='card-body'><h4 class='card-title'>Was there a UFO over the region this week? - WAMC</h4><div class='card-meta'>2025-08-14 22:35 UTC</div></div></a>
+<a class='card' href='articles/maga-lawmaker-anna-paulina-luna-claims-congress-has-seen-proof-of-interdimensional-beings-the-independent.html'><div class='card-media' style="background-image:url('assets/maga-lawmaker-anna-paulina-luna-claims-congress-ha.jpg')"></div><div class='card-body'><h4 class='card-title'>MAGA lawmaker Anna Paulina Luna claims Congress has seen proof of ‘interdimensional beings’ - The Independent</h4><div class='card-meta'>2025-08-14 14:36 UTC</div></div></a>
+<!--/FEATURED-->
+          </div>
+        </section>
+      </div>
+
+      <aside class="grid-rail">
+        <div class="rail-block card">
+          <div class="rail-title">Now</div>
+          <div id="clock" class="rail-now">—:—</div>
+          <div class="rail-title" style="border-top:1px solid var(--line)">Toronto Weather</div>
+          <div class="rail-now">
+            <!--WEATHER-->
+17.2°C (feels 16.3°C), wind 17.8 km/h
+<!--/WEATHER-->
+          </div>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Latest Headlines</div>
+          <ul class="rail-list">
+            <!--HEADLINES-->
+<li><a href="articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html">UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</a></li>
+<li><a href="articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html">UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</a></li>
+<li><a href="articles/ufo-drummer-opens-up-on-vitriol-between-michael-and-rudolf-schenker-describes-them-as-interesting-lot-ultimate-guitar.html">UFO Drummer Opens Up on &#x27;Vitriol&#x27; Between Michael and Rudolf Schenker, Describes Them as &#x27;Interesting Lot&#x27; - Ultimate Guitar</a></li>
+<li><a href="articles/germany-s-zdf-identifies-ufo-docs-from-espresso-media-international-c21media.html">Germany’s ZDF identifies UFO docs from Espresso Media International - C21media</a></li>
+<li><a href="articles/germany-s-zdf-identifies-ufo-docs-from-espresso-media-international-c21media.html">Germany’s ZDF identifies UFO docs from Espresso Media International - C21media</a></li>
+<li><a href="articles/science-is-nourishing-avi-loeb-medium.html">Science is Nourishing - Avi Loeb – Medium</a></li>
+<li><a href="articles/3i-atlas-do-not-hold-your-breath-for-aliens-universe-space-tech.html">3I/ATLAS. Do not hold your breath for aliens - Universe Space Tech</a></li>
+<li><a href="articles/what-should-humanity-do-on-the-day-after-an-interstellar-object-is-recognized-as-technological-avi-loeb-medium.html">What Should Humanity Do on the Day After an Interstellar Object is Recognized as Technological? - Avi Loeb – Medium</a></li>
+<li><a href="articles/was-there-a-ufo-over-the-region-this-week-wamc.html">Was there a UFO over the region this week? - WAMC</a></li>
+<li><a href="articles/maga-lawmaker-anna-paulina-luna-claims-congress-has-seen-proof-of-interdimensional-beings-the-independent.html">MAGA lawmaker Anna Paulina Luna claims Congress has seen proof of ‘interdimensional beings’ - The Independent</a></li>
+<!--/HEADLINES-->
+          </ul>
+        </div>
+
+        <div class="rail-block card">
+          <div class="rail-title">Trending Now</div>
+          <ul class="rail-list">
+            <!--TRENDING-->
+<li><a href="https://news.google.com/rss/articles/CBMikgFBVV95cUxPdUFhSFNVMEZwN0VScW15ZzBHVVc1X1B0eTBDVlhaanlRWWhsZEtMdW5Jcno5ZzVuOEM1bDI4QTdUSGxPdDdfUi1VenVxazNRSlFyOEU3bXJPRHFPQ1RNVW9xVGQ4MEFwUHRieTgwY0wzZVZrVlFfaWlHc00tQWtIWE1MMW1WZ0dhTnYtNDFsbTRVdw?oc=5" target="_blank" rel="noopener">Texas House passes GOP redistricting plan after weeks-long standoff - CBS News</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMimwFBVV95cUxOTHR1NlktOXVBUzhLNGhUelh1TTl1MWZqSjNvOERRQlFHNHRCUjY0bVRiN3dESzJMckt3NnV6OVdOWE83VjQyYjQzRVVERnFaeVFFVjBmc0R6VUJ5eHlTMDBiX2hBaGZ1ZjVCMHRDOHBadi0tZ3dYNHhHdjRfUkRWTkkyLVM4SFMxTi11Y1k4bEh6UVBzaFFYajBZTQ?oc=5" target="_blank" rel="noopener">Flooding begins in the Outer Banks as Hurricane Erin moves north - NPR</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMimgFBVV95cUxOV01zT2d3SHllYU1pZUcwNlppMFV3RmFqN0J3OGwtNkpZZXYzMWFpVHhKTWdDaXhHN3RJOEdGUGlCUE5mQjVlVGxXQ2xqX0ZoaHhmS3JqRTJSNVE0UzVaQVEyR0lja1RYNDhYOUR4dVIyZXROMGFwQy1LSVByaEE0dXIyT044WnJFY3RJb2M3R283Q05yTW8zeDRR?oc=5" target="_blank" rel="noopener">Trump administration’s anti-woke campaign targets Smithsonian museums - The Guardian</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMiugFBVV95cUxOMC1yNHVIaDBRby1KZjJGSFRlbElNbGM4bzBZQ3czaGFIT1MwNEFJV1FGdndnWDBzY0xUNHB1UnBSYmdxck1oemJDOENlOFZNa05RQ2FRWWdpYTVudE1EMGRnZ2tYNXJfa0NmYWpPMXRMZ3p2bkVYcG1ZWWRqeDdsdGxYaFk4QndwcDNrQ2M2eXdpekpmN1lIN2ZwNDJXeW8xZkZHWUQxSVBERFc0T1RHcUxuQW9LTS1tVnfSAb8BQVVfeXFMTndEOVV4TWpxYW1Tb2lKZ0wtR2lEZDIwRVpxREFfd0gwVF9ZUU9ETVJZYU00VnRfdkJyczRSQXRna05yZmRoUXVSYTBkdXAzY254Q3N2Q3IzTzliQ1RjYmJMcF9WcEsxYi1GOG9Dalk4YThFTXRPVzdlbDlXQzY0UHo4LUdqVXRvanhfTi1KajFRV0VYaWwxWU90Z3FIY01qZDdibXV3d1h2QnZLckRTRzN0QW02YjhDYnV3VnZHNGs?oc=5" target="_blank" rel="noopener">Israel begins attack on Gaza City, calling up to 60,000 reservists - ABC News</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMikAFBVV95cUxQQUlqemZkQ19nR0pvUE5nMFA2aC1TeW4xcGVZeDJuMlhzV1J5QzdVYW5VeXR6TldhWUVDMG1IZTZOaGk5UXl2UUZzQjdkX1Nld05kNnR2Wk9vVTg3M2pUNU5OenBqTlk3QXRzeEhjSFpnZW50cXhsNFBJOEZ6R2ZhR04yRnQzakZ0TE96dGIxV1Q?oc=5" target="_blank" rel="noopener">Israel Approves Settlements, a Blow to Faded Hopes for a Palestinian State - The New York Times</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMiekFVX3lxTE5KZER5cFZkZG1OUldzSGhIbzJGaGo1YklMb05ZSTU3Xzg5aTZPNldhckFoa2g1UDRIMUVHX1BHMERJZmcxTnE4bFljaDRsVnlJcER5Z3VrdGdXV3ptUXhYWnhuYXAwQVBXU1Y4MUg5S0JOeHZGQ292THBR?oc=5" target="_blank" rel="noopener">NH mother killed husband, 2 kids before fatally shooting herself, state AG says - WCVB</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMilAFBVV95cUxNdVc0SWxSRDFMVFZxbFFtTFdFYUdyeFdlanlmRk1vaEJQemFCNWZPbkplVWFYMnNFWlJ4Nk9wMHVfLWszYzc0S1IxTVNESHZTclFFNU9qdElZNDk1UUlwU3JZRjJLUGNlaERiT25oRVNFQmt4RWkxak5rbkEtWC0zc1NsQUZFamJCaWJySGQzRnJWLWNo?oc=5" target="_blank" rel="noopener">Obama supports California redistricting, says GOP can’t ‘rig the game’ - The Washington Post</a></li>
+<li><a href="https://news.google.com/rss/articles/CBMitAFBVV95cUxPOFdnQlZnUDFjV1J4WnFRWFBKc1ZLZDc3cEM3dVYzWmhrRV80TEl4cEphdjNNZEFtdlRoX2Q0X242bExXYjl3S1hKY05hNHZJTU9qTHFTUGNlSmEwUU5hd2swdm10WmgzdzVjamVSdnJ2Wnd0a0JBTVJvamNXaGp0cDhCd2dFY1hBeUVIM1VmdURyb2xGeHdFSmVrb1o2MHpxQmRQeFdTVEdhaGVLZ1YwNVliWXbSAboBQVVfeXFMUHpiWGhnb2IwOXo2TXhSYTBsWUZXVXBXalh4WHRXbTFDd192b2FhUllIV2RKNlRUNk5XdEpTWFQ5RElrR2s3UjRZMDR4SGlmcVZYU01KMXJuTkpNTGFtVDhQeFU3Ynhxd25FbUFzb0FUT2Fsdi1CWTBOYkxNNUQtb0tFaGtDczRaQzB3ZVJlZ1RCR3NFX1lKUzNpaGR4OGVRc2s2Wll3UDZJTFhRbldWczRtNVlWalZUZTJB?oc=5" target="_blank" rel="noopener">US court blocks Texas law requiring Ten Commandments in school classrooms - Al Jazeera</a></li>
+<!--/TRENDING-->
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container row between wrap">
+      <p>© <span id="y"></span> Search 433</p>
+      <p class="muted">Automated reporting. Articles are preserved in the archive.</p>
+    </div>
+    <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+  </footer>
+</body>
+</html>
