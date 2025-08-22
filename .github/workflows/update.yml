@@ -1,25 +1,19 @@
-name: Reset Generated Content
+# .github/workflows/auto-refresh.yml
+name: Auto-refresh
 
 on:
   workflow_dispatch:
-    inputs:
-      keep_assets:
-        description: "Keep existing /assets images? (true/false)"
-        required: false
-        default: "false"
-      wipe_story_memory:
-        description: "Also clear data/story_memory.json to {} ? (true/false)"
-        required: false
-        default: "false"
+  schedule:
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
 
 jobs:
-  reset:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -27,36 +21,23 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Ensure reset script is present
+      - name: Install Python deps
         run: |
-          test -f reset_site.py || (echo "reset_site.py not found at repo root" && exit 1)
-          chmod +x reset_site.py
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run reset
+      - name: Install Playwright Chromium (with system deps)
         run: |
-          KEEP_ASSETS="${{ github.event.inputs.keep_assets }}"
-          WIPE_STORY="${{ github.event.inputs.wipe_story_memory }}"
+          python -m playwright install --with-deps chromium
 
-          # Normalize to flags for the script
-          FLAGS=""
-          if [ "$KEEP_ASSETS" = "true" ]; then
-            FLAGS="$FLAGS --keep-assets"
-          fi
-          if [ "$WIPE_STORY" = "true" ]; then
-            FLAGS="$FLAGS --wipe-story-memory"
-          fi
+      - name: Run generator
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          UNSPLASH_KEY:   ${{ secrets.UNSPLASH_KEY }}
+        run: python generator.py
 
-          echo "Executing: python reset_site.py $FLAGS"
-          python reset_site.py $FLAGS
-
-      - name: Commit & push reset
-        run: |
-          git config user.name  "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "Reset: purge generated articles/assets and clear manifest"
-            git push
-          fi
+      - name: Commit & push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "auto: refresh headlines"
+          branch: main
