@@ -1,10 +1,15 @@
 # generator.py
-import os, re, json, hashlib, html, urllib.parse, xml.etree.ElementTree as ET
+import os, re, json, hashlib, html, urllib.parse, xml.etree.ElementTree as ET, asyncio
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set, Tuple
 from urllib.parse import urlparse
 import difflib, math, requests
+
+try:
+    from playwright.async_api import async_playwright
+except Exception:
+    async_playwright = None
 
 try:
     from bs4 import BeautifulSoup
@@ -258,6 +263,58 @@ def extract_external_from_reddit(desc_html: str, fallback_link: str) -> Optional
         pass
     return None
 
+async def _scrape_gnews(query: str) -> List[Dict]:
+    """Uses Playwright to scrape Google News search results, sorted by date."""
+    if not async_playwright:
+        print("[warn] Playwright is not installed, cannot perform search. Skipping.")
+        return []
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=UA_HEADERS["User-Agent"])
+        page = await context.new_page()
+
+        # Use search parameters for "past week" and "sort by date"
+        params = {"q": query, "tbm": "nws", "tbs": "qdr:w,sbd:1", "newwindow": "1"}
+        url = "https://www.google.com/search?" + urllib.parse.urlencode(params)
+
+        items = []
+        try:
+            await page.goto(url, timeout=25000, wait_until="domcontentloaded")
+            await page.wait_for_selector('a[href*="url?q="]', timeout=10000)
+
+            # Google's class names are volatile; try a few common ones.
+            results = await page.query_selector_all('div.SoaBEf')
+            if not results:
+                results = await page.query_selector_all('div.Gx5Zad')
+
+            for res in results[:25]: # Limit to top 25 results
+                try:
+                    link_el = await res.query_selector('a')
+                    if not link_el: continue
+
+                    link = await link_el.get_attribute('href')
+                    if link and link.startswith('/url?q='):
+                        link = urllib.parse.parse_qs(urllib.parse.urlparse(link).query).get('q', [None])[0]
+                    elif not (link and (link.startswith('http://') or link.startswith('https://'))):
+                        continue
+
+                    title_el = await res.query_selector('div[role="heading"]')
+                    title = await title_el.inner_text() if title_el else ""
+
+                    if not title or not link: continue
+                    items.append({"title": title, "link": link, "date": utcnow(), "description": ""})
+                except Exception:
+                    continue
+        finally:
+            await context.close()
+            await browser.close()
+        return items
+
+def google_news_playwright(query: str) -> List[Dict]:
+    """Sync wrapper for the async Playwright Google News scraper."""
+    return asyncio.run(_scrape_gnews(query))
+
 # ===== Extract text (HTML → text; Playwright fallback in scraper) =====
 def try_jsonld_article(soup: BeautifulSoup) -> Optional[str]:
     for script in soup.find_all("script", attrs={"type":"application/ld+json"}):
@@ -399,15 +456,6 @@ def novelty_score(title: str, recent_titles: List[str], recent_sigs: List[Set[st
         if sim > best: best = sim
     return max(0.0, 1.0 - best)
 def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[str], recent_sigs: List[Set[str]], recent_domains: Set[str], token_freq: Dict[str,int], weight: float) -> float:
-    """Return a score for a candidate headline.
-
-    If the domain has appeared recently, we hard skip by returning a
-    negative score. This provides stronger protection against repeating
-    the same source across runs.
-    """
-    if domain in recent_domains:
-        return -1.0
-
     r = recency_score(dt)
     n = novelty_score(title, recent_titles, recent_sigs)
     sig = topic_signature(title)
@@ -415,6 +463,27 @@ def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[s
     tok_penalty = min(0.15, 0.03 * over)
     base = 0.55*r + 0.35*n - tok_penalty
     return base * (0.75 + 0.25 * (weight/5.0))  # weight tilt
+
+def is_story_outlet_duplicate(title: str, domain: str, manifest: List[Dict]) -> bool:
+    """
+    Checks if a story from a specific outlet has already been published.
+    A story is considered a duplicate if an article with a very similar title
+    from the same domain already exists in the manifest.
+    """
+    cand_sig = topic_signature(title)
+    cand_title_lower = title.lower()
+    for article in manifest:
+        try:
+            article_domain = urlparse(article.get("source_url", "")).netloc.lower().split(":")[0].lstrip("www.")
+        except Exception:
+            continue
+        if domain == article_domain:
+            article_title = article.get("title", "")
+            if difflib.SequenceMatcher(None, cand_title_lower, article_title.lower()).ratio() >= 0.92: return True
+            article_sig = topic_signature(article_title)
+            if jaccard(cand_sig, article_sig) >= 0.75: return True
+            if len(cand_sig) >= 5 and len(cand_sig & article_sig) >= len(cand_sig) - 1: return True
+    return False
 
 def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
     cut = utcnow() - timedelta(hours=window_hours)
@@ -558,26 +627,30 @@ def main():
     recent_titles, recent_sigs, recent_domains, token_freq = build_recent_memory(manifest, DEDUP_WINDOW_HOURS)
 
     # Build candidate list for each interest with multi-source + query packs
+    print("--- Starting News Search ---")
     all_candidates: List[Dict] = []
     for interest, weight in interests_weighted:
+        print(f"-> Searching for '{interest}' (weight: {weight})")
+        # Use Playwright for comet stories, RSS for UFOs
         if "comet" in interest.lower():
-            queries = COMET_QUERIES
-        else:
-            queries = UFO_QUERIES
-
-        # 1) News search feeds
-        for q in queries:
-            for it in google_news_rss(q, limit=28):
+            print("   Using Playwright Google News search...")
+            for it in google_news_playwright(interest):
                 all_candidates.append({**it, "interest": interest, "weight": weight})
-            for it in bing_news_rss(q, limit=28):
-                all_candidates.append({**it, "interest": interest, "weight": weight})
+        else: # For UFOs and other general topics
+            print("   Using RSS and Reddit feeds...")
+            queries = UFO_QUERIES if "ufo" in interest.lower() else [interest]
+            for q in queries:
+                for it in google_news_rss(q, limit=28):
+                    all_candidates.append({**it, "interest": interest, "weight": weight})
+                for it in bing_news_rss(q, limit=28):
+                    all_candidates.append({**it, "interest": interest, "weight": weight})
+            if "ufo" in interest.lower() or "uap" in interest.lower():
+                for sub in REDDIT_SUBS:
+                    for it in reddit_rss(sub, limit=20):
+                        all_candidates.append({**it, "interest": interest, "weight": weight})
 
-        # 2) Reddit external links
-        for sub in REDDIT_SUBS:
-            for it in reddit_rss(sub, limit=20):
-                all_candidates.append({**it, "interest": interest, "weight": weight})
-
-    # Normalize: drop ads, de-dupe by link host+path
+    # Normalize: drop ads, de-dupe by link
+    print(f"--- Filtering {len(all_candidates)} total candidates ---")
     seen_links: Set[str] = set()
     normed: List[Dict] = []
     for it in all_candidates:
@@ -592,6 +665,7 @@ def main():
         seen_links.add(key)
         normed.append(it)
 
+    print(f"   {len(normed)} candidates remain after filtering.")
     # Cutoffs: primary window 24h; backfill to 96h if needed
     cutoff_main    = utcnow() - timedelta(hours=NEWS_LOOKBACK_HOURS)
     cutoff_backfill= utcnow() - timedelta(hours=BACKFILL_LOOKBACK_HOURS)
@@ -632,6 +706,10 @@ def main():
         domain = urlparse(cand["link"]).netloc.lower().split(":")[0]
         if domain.startswith("www."): domain = domain[4:]
         if domain in run_domains: continue
+
+        # Check if this exact story from this outlet has already been covered
+        if is_story_outlet_duplicate(cand["title"], domain, manifest):
+            continue
 
         if is_advertorial(cand["title"], cand["link"]): continue
         if not can_take(cand["title"]): continue
@@ -749,20 +827,6 @@ def toronto_weather() -> str:
         return f"{t}°C (feels {feels}°C), wind {wind} km/h"
     except Exception:
         return "Weather unavailable"
-
-def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
-    cut = utcnow() - timedelta(hours=window_hours)
-    titles, sigs, domains, token_freq = [], [], set(), {}
-    for a in manifest:
-        dt = parse_manifest_dt(a.get("date",""))
-        if dt and dt >= cut:
-            t = a.get("title",""); titles.append(t)
-            ts = topic_signature(t); sigs.append(ts)
-            for tok in ts: token_freq[tok] = token_freq.get(tok, 0) + 1
-            link = a.get("source_url",""); d = urlparse(link).netloc.lower().split(":")[0]
-            if d.startswith("www."): d = d[4:]
-            if d: domains.add(d)
-    return titles, sigs, domains, token_freq
 
 if __name__ == "__main__":
     main()
