@@ -1,0 +1,62 @@
+name: Reset Generated Content
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_assets:
+        description: "Keep existing /assets images? (true/false)"
+        required: false
+        default: "false"
+      wipe_story_memory:
+        description: "Also clear data/story_memory.json to {} ? (true/false)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ensure reset script is present
+        run: |
+          test -f reset_site.py || (echo "reset_site.py not found at repo root" && exit 1)
+          chmod +x reset_site.py
+
+      - name: Run reset
+        run: |
+          KEEP_ASSETS="${{ github.event.inputs.keep_assets }}"
+          WIPE_STORY="${{ github.event.inputs.wipe_story_memory }}"
+
+          # Normalize to flags for the script
+          FLAGS=""
+          if [ "$KEEP_ASSETS" = "true" ]; then
+            FLAGS="$FLAGS --keep-assets"
+          fi
+          if [ "$WIPE_STORY" = "true" ]; then
+            FLAGS="$FLAGS --wipe-story-memory"
+          fi
+
+          echo "Executing: python reset_site.py $FLAGS"
+          python reset_site.py $FLAGS
+
+      - name: Commit & push reset
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Reset: purge generated articles/assets and clear manifest"
+            git push
+          fi

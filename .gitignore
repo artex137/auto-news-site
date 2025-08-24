@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+
+# Env & logs
+.env
+*.log
+
+# Node (if any)
+node_modules/
+
+# OS junk
+.DS_Store
+Thumbs.db
