@@ -54,8 +54,8 @@ DEFAULT_INTERESTS = [
 NEWS_LOOKBACK_HOURS      = 24
 BACKFILL_LOOKBACK_HOURS  = 96
 DEDUP_WINDOW_HOURS       = 72
-NUM_PER_RUN              = 8   # increased
-CAP_PER_TOKEN            = 2   # allow two similar topics in a run
+NUM_PER_RUN              = 4
+CAP_PER_TOKEN            = 3   # allow more similar topics in a run
 
 # homepage counts
 SLIDER_LATEST   = 4
@@ -102,8 +102,6 @@ COMET_QUERIES = [
     "ATLAS comet discovery",
     "interstellar comet ATLAS"
 ]
-
-REDDIT_SUBS = ["UFOs", "UAP", "HighStrangeness", "Astronomy"]
 
 # ===== Interest weighting =====
 DEFAULT_WEIGHTS = {
@@ -215,18 +213,6 @@ def bing_news_rss(query: str, limit: int = 28) -> List[Dict]:
     url = f"https://www.bing.com/news/search?q={q}&format=rss"
     return _rss_to_items(url, limit=limit)
 
-def reddit_rss(sub: str, limit: int = 25) -> List[Dict]:
-    url = f"https://www.reddit.com/r/{sub}/.rss"
-    items = _rss_to_items(url, limit=limit, reddit=True)
-    out = []
-    for it in items:
-        # Try to extract first external link from description/content
-        ext = extract_external_from_reddit(it.get("description",""), it.get("link",""))
-        if ext and "reddit.com" not in urlparse(ext).netloc.lower():
-            it["link"] = ext
-            out.append(it)
-    return out
-
 def _rss_to_items(url: str, limit: int = 28, reddit: bool = False) -> List[Dict]:
     out = []
     try:
@@ -251,18 +237,6 @@ def _rss_to_items(url: str, limit: int = 28, reddit: bool = False) -> List[Dict]
         print("RSS error:", e)
     return out
 
-def extract_external_from_reddit(desc_html: str, fallback_link: str) -> Optional[str]:
-    try:
-        if not desc_html or not BeautifulSoup: return None
-        soup = BeautifulSoup(desc_html, "lxml")
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("http") and "reddit.com" not in urlparse(href).netloc.lower():
-                return href
-    except Exception:
-        pass
-    return None
-
 async def _scrape_gnews(query: str) -> List[Dict]:
     """Uses Playwright to scrape Google News search results, sorted by date."""
     if not async_playwright:
@@ -280,32 +254,38 @@ async def _scrape_gnews(query: str) -> List[Dict]:
 
         items = []
         try:
+            print(f"   -> Playwright navigating to: {url}")
             await page.goto(url, timeout=25000, wait_until="domcontentloaded")
-            await page.wait_for_selector('a[href*="url?q="]', timeout=10000)
+            await page.wait_for_selector('div[role="heading"]', timeout=15000)
 
-            # Google's class names are volatile; try a few common ones.
-            results = await page.query_selector_all('div.SoaBEf')
-            if not results:
-                results = await page.query_selector_all('div.Gx5Zad')
+            # New strategy: Find headlines (more stable) and work back to the link
+            headlines = await page.query_selector_all('div[role="heading"]')
 
-            for res in results[:25]: # Limit to top 25 results
+            for h_el in headlines[:25]: # Limit to top 25 results
                 try:
-                    link_el = await res.query_selector('a')
-                    if not link_el: continue
+                    title = await h_el.inner_text()
+                    if not title: continue
 
+                    # The headline is inside an 'a' tag. Find the ancestor link.
+                    link_el = await h_el.query_selector('xpath=ancestor::a')
+                    if not link_el: continue
+                    
                     link = await link_el.get_attribute('href')
+                    if not link: continue
+
+                    # Clean up Google's redirect URL if present
                     if link and link.startswith('/url?q='):
                         link = urllib.parse.parse_qs(urllib.parse.urlparse(link).query).get('q', [None])[0]
-                    elif not (link and (link.startswith('http://') or link.startswith('https://'))):
+                    
+                    if not link or not (link.startswith('http://') or link.startswith('https://')):
                         continue
 
-                    title_el = await res.query_selector('div[role="heading"]')
-                    title = await title_el.inner_text() if title_el else ""
-
-                    if not title or not link: continue
                     items.append({"title": title, "link": link, "date": utcnow(), "description": ""})
                 except Exception:
                     continue
+            print(f"   -> Found {len(items)} candidates via Playwright for '{query}'")
+        except Exception as e:
+            print(f"[warn] Playwright search failed for query '{query}': {e}")
         finally:
             await context.close()
             await browser.close()
@@ -644,10 +624,6 @@ def main():
                     all_candidates.append({**it, "interest": interest, "weight": weight})
                 for it in bing_news_rss(q, limit=28):
                     all_candidates.append({**it, "interest": interest, "weight": weight})
-            if "ufo" in interest.lower() or "uap" in interest.lower():
-                for sub in REDDIT_SUBS:
-                    for it in reddit_rss(sub, limit=20):
-                        all_candidates.append({**it, "interest": interest, "weight": weight})
 
     # Normalize: drop ads, de-dupe by link
     print(f"--- Filtering {len(all_candidates)} total candidates ---")
@@ -705,24 +681,36 @@ def main():
 
         domain = urlparse(cand["link"]).netloc.lower().split(":")[0]
         if domain.startswith("www."): domain = domain[4:]
-        if domain in run_domains: continue
+        if domain in run_domains:
+            # This is not an error, just skipping to ensure variety in a single run.
+            continue
 
         # Check if this exact story from this outlet has already been covered
         if is_story_outlet_duplicate(cand["title"], domain, manifest):
+            print(f"  [skip] Duplicate story from outlet '{domain}': {cand['title'][:60]}...")
             continue
 
-        if is_advertorial(cand["title"], cand["link"]): continue
-        if not can_take(cand["title"]): continue
+        if is_advertorial(cand["title"], cand["link"]):
+            print(f"  [skip] Advertorial detected: {cand['title'][:60]}...")
+            continue
+        if not can_take(cand["title"]):
+            print(f"  [skip] Topic cap reached for: {cand['title'][:60]}...")
+            continue
 
         # Get full text (fallback to Playwright in scraper)
+        print(f"-> Processing candidate: {cand['title'][:80]}...")
         source_text = fetch_page_text(cand["link"], min_chars=250)
-        if len(source_text) < 250: continue
+        if len(source_text) < 250:
+            print(f"  [skip] Not enough text found from source ({len(source_text)} chars).")
+            continue
 
         # Strict relevance to the focus interest
         if not passes_interest_relevance(cand["interest"], cand["title"], source_text):
+            print(f"  [skip] Failed relevance check for interest '{cand['interest']}'.")
             continue
 
         # Try to scrape best image from the page
+        print(f"  -> Generating article...")
         _scraped_text, scraped_imgs = scrape_article(cand["link"])
         hero_rel = FALLBACK
         if scraped_imgs:
