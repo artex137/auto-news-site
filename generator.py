@@ -201,50 +201,6 @@ def is_advertorial(title: str, link: str) -> bool:
     if any(seg in link.lower() for seg in ["/shop","/shopping","/deals","/deal/","/store/","/buy/"]): return True
     return False
 
-def google_news_rss(query: str, limit: int = 28) -> List[Dict]:
-    q_core = f"\"{query}\"" if " " in query.strip() else query
-    negatives = "-Alienware -laptop -gaming -coupon -promo -deal -shopping"
-    q = urllib.parse.quote(f"{q_core} {negatives}")
-    url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
-    return _rss_to_items(url, limit=limit)
-
-def bing_news_rss(query: str, limit: int = 28) -> List[Dict]:
-    q = urllib.parse.quote(query)
-    url = f"https://www.bing.com/news/search?q={q}&format=rss"
-    return _rss_to_items(url, limit=limit)
-
-def _rss_to_items(url: str, limit: int = 28) -> List[Dict]:
-    out = []
-    try:
-        r = requests.get(url, timeout=15, headers=UA_HEADERS); r.raise_for_status()
-        root = ET.fromstring(r.text)
-        is_gnews = "news.google.com" in url
-        for item in root.findall(".//item")[:limit]:
-            title = (item.findtext("title") or "").strip()
-            link  = (item.findtext("link")  or "").strip()
-            pub   = (item.findtext("pubDate") or "").strip()
-            desc = item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded") or item.findtext("description") or ""
-            if is_gnews and desc and BeautifulSoup:
-                try:
-                    soup = BeautifulSoup(desc, 'lxml')
-                    real_link_tag = soup.find('a')
-                    if real_link_tag and real_link_tag.get('href'):
-                        link = real_link_tag['href']
-                except Exception:
-                    pass # stick with original link if parsing fails
-            if not title or not link: continue
-            if is_advertorial(title, link): continue
-            try:
-                dt = parsedate_to_datetime(pub) if pub else datetime.utcnow()
-            except Exception:
-                dt = datetime.utcnow()
-            if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
-            else: dt = dt.astimezone(timezone.utc)
-            out.append({"title": title, "link": link, "date": dt, "description": desc})
-    except Exception as e:
-        print("RSS error:", e)
-    return out
-
 async def _scrape_gnews(query: str) -> List[Dict]:
     """Uses Playwright to scrape Google News search results, sorted by date."""
     if not async_playwright:
@@ -263,7 +219,7 @@ async def _scrape_gnews(query: str) -> List[Dict]:
         items = []
         try:
             print(f"   -> Playwright navigating to: {url}")
-            await page.goto(url, timeout=25000, wait_until="domcontentloaded")
+            await page.goto(url, timeout=30000, wait_until="domcontentloaded")
 
             # Try to handle cookie/consent pop-ups
             consent_selectors = [
@@ -276,12 +232,12 @@ async def _scrape_gnews(query: str) -> List[Dict]:
                 try:
                     await page.locator(selector).click(timeout=2000)
                     print("   -> Clicked consent button.")
-                    await page.wait_for_load_state("networkidle", timeout=3000)
+                    await page.wait_for_timeout(1500) # wait for page to settle
                     break
                 except Exception:
                     pass
 
-            await page.wait_for_selector('div[role="heading"]', timeout=20000)
+            await page.wait_for_selector('div[role="heading"]', timeout=25000)
 
             # New strategy: Find headlines (more stable) and work back to the link
             headlines = await page.query_selector_all('div[role="heading"]')
@@ -648,19 +604,9 @@ def main():
     all_candidates: List[Dict] = []
     for interest, weight in interests_weighted:
         print(f"-> Searching for '{interest}' (weight: {weight})")
-        # Use Playwright for comet stories, RSS for UFOs
-        if "comet" in interest.lower():
-            print("   Using Playwright Google News search...")
-            for it in google_news_playwright(interest):
-                all_candidates.append({**it, "interest": interest, "weight": weight})
-        else: # For UFOs and other general topics
-            print("   Using RSS and Reddit feeds...")
-            queries = UFO_QUERIES if "ufo" in interest.lower() else [interest]
-            for q in queries:
-                for it in google_news_rss(q, limit=28):
-                    all_candidates.append({**it, "interest": interest, "weight": weight})
-                for it in bing_news_rss(q, limit=28):
-                    all_candidates.append({**it, "interest": interest, "weight": weight})
+        # Use Playwright for all searches for consistency and robustness
+        for it in google_news_playwright(interest):
+            all_candidates.append({**it, "interest": interest, "weight": weight})
 
     # Normalize: drop ads, de-dupe by link
     print(f"--- Filtering {len(all_candidates)} total candidates ---")
