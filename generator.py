@@ -441,7 +441,9 @@ def score_candidate(title: str, dt: datetime, domain: str, recent_titles: List[s
     sig = topic_signature(title)
     over = max((token_freq.get(t,0) for t in sig), default=0)
     tok_penalty = min(0.15, 0.03 * over)
-    base = 0.55*r + 0.35*n - tok_penalty
+    # Add a penalty for reusing a domain within the dedup window to encourage diversity
+    domain_penalty = 0.20 if domain in recent_domains else 0.0
+    base = 0.55*r + 0.35*n - tok_penalty - domain_penalty
     return base * (0.75 + 0.25 * (weight/5.0))  # weight tilt
 
 def is_story_outlet_duplicate(title: str, domain: str, manifest: List[Dict]) -> bool:
@@ -459,9 +461,9 @@ def is_story_outlet_duplicate(title: str, domain: str, manifest: List[Dict]) -> 
             continue
         if domain == article_domain:
             article_title = article.get("title", "")
-            if difflib.SequenceMatcher(None, cand_title_lower, article_title.lower()).ratio() >= 0.92: return True
+            if difflib.SequenceMatcher(None, cand_title_lower, article_title.lower()).ratio() >= 0.90: return True
             article_sig = topic_signature(article_title)
-            if jaccard(cand_sig, article_sig) >= 0.75: return True
+            if jaccard(cand_sig, article_sig) >= 0.70: return True
             if len(cand_sig) >= 5 and len(cand_sig & article_sig) >= len(cand_sig) - 1: return True
     return False
 
