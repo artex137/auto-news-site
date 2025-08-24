@@ -213,15 +213,25 @@ def bing_news_rss(query: str, limit: int = 28) -> List[Dict]:
     url = f"https://www.bing.com/news/search?q={q}&format=rss"
     return _rss_to_items(url, limit=limit)
 
-def _rss_to_items(url: str, limit: int = 28, reddit: bool = False) -> List[Dict]:
+def _rss_to_items(url: str, limit: int = 28) -> List[Dict]:
     out = []
     try:
         r = requests.get(url, timeout=15, headers=UA_HEADERS); r.raise_for_status()
         root = ET.fromstring(r.text)
+        is_gnews = "news.google.com" in url
         for item in root.findall(".//item")[:limit]:
             title = (item.findtext("title") or "").strip()
             link  = (item.findtext("link")  or "").strip()
             pub   = (item.findtext("pubDate") or "").strip()
+            desc = item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded") or item.findtext("description") or ""
+            if is_gnews and desc and BeautifulSoup:
+                try:
+                    soup = BeautifulSoup(desc, 'lxml')
+                    real_link_tag = soup.find('a')
+                    if real_link_tag and real_link_tag.get('href'):
+                        link = real_link_tag['href']
+                except Exception:
+                    pass # stick with original link if parsing fails
             if not title or not link: continue
             if is_advertorial(title, link): continue
             try:
@@ -230,8 +240,6 @@ def _rss_to_items(url: str, limit: int = 28, reddit: bool = False) -> List[Dict]
                 dt = datetime.utcnow()
             if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
             else: dt = dt.astimezone(timezone.utc)
-            # Reddit items may include content:encoded
-            desc = item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded") or item.findtext("description") or ""
             out.append({"title": title, "link": link, "date": dt, "description": desc})
     except Exception as e:
         print("RSS error:", e)
@@ -256,7 +264,24 @@ async def _scrape_gnews(query: str) -> List[Dict]:
         try:
             print(f"   -> Playwright navigating to: {url}")
             await page.goto(url, timeout=25000, wait_until="domcontentloaded")
-            await page.wait_for_selector('div[role="heading"]', timeout=15000)
+
+            # Try to handle cookie/consent pop-ups
+            consent_selectors = [
+                'button:has-text("Accept all")',
+                'button:has-text("I agree")',
+                'button:has-text("Agree")',
+                'div[role="button"]:has-text("Accept all")'
+            ]
+            for selector in consent_selectors:
+                try:
+                    await page.locator(selector).click(timeout=2000)
+                    print("   -> Clicked consent button.")
+                    await page.wait_for_load_state("networkidle", timeout=3000)
+                    break
+                except Exception:
+                    pass
+
+            await page.wait_for_selector('div[role="heading"]', timeout=20000)
 
             # New strategy: Find headlines (more stable) and work back to the link
             headlines = await page.query_selector_all('div[role="heading"]')
@@ -377,9 +402,11 @@ def fetch_page_text(url: str, min_chars: int = 250, max_chars: int = 7000) -> st
     host = urlparse(url).netloc.lower()
     if "youtube.com" in host or "youtu.be" in host:
         return fetch_youtube_transcript(url)[:max_chars]
+
+    body = ""
+    # Attempt 1: Standard requests + parsing
     try:
         _, html_text = fetch_html(url, UA_HEADERS)
-        body = ""
         if BeautifulSoup:
             soup = BeautifulSoup(html_text, "lxml")
             body = try_jsonld_article(soup) or extract_main_text(soup)
@@ -390,17 +417,25 @@ def fetch_page_text(url: str, min_chars: int = 250, max_chars: int = 7000) -> st
                     soup2 = BeautifulSoup(cleaned_html, "lxml")
                     more = " ".join(p.get_text(" ", strip=True) for p in soup2.find_all(["p","li"]))
                     if len(more) > len(body): body = more
-                except Exception:
-                    pass
-        if len(body) < min_chars:
-            via_jina = fetch_via_jina_text(url)
-            if len(via_jina) > len(body): body = via_jina
-        if len(body) < min_chars:
-            txt, _imgs = scrape_article(url)  # final fallback (also finds images)
-            if len(txt) > len(body): body = txt
-        return re.sub(r"\s+", " ", (body or ""))[:max_chars].strip()
+                except Exception: pass
     except Exception as e:
-        print("parse error:", e); return ""
+        print(f"  [info] Initial fetch for {url} failed: {e}")
+
+    # Attempt 2: Jina AI reader if first attempt was weak
+    if len(body) < min_chars:
+        via_jina = fetch_via_jina_text(url)
+        if len(via_jina) > len(body): body = via_jina
+
+    # Attempt 3: Full Playwright render if still weak
+    if len(body) < min_chars:
+        print(f"  [info] Falling back to Playwright scrape for {url}")
+        try:
+            txt, _imgs = scrape_article(url)
+            if len(txt) > len(body): body = txt
+        except Exception as e:
+            print(f"  [warn] Playwright scrape failed for {url}: {e}")
+
+    return re.sub(r"\s+", " ", (body or ""))[:max_chars].strip()
 
 # ===== Similarity / scoring =====
 def tokenize_title(title: str) -> List[str]:
