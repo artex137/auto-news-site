@@ -219,7 +219,7 @@ async def _scrape_gnews(query: str) -> List[Dict]:
         items = []
         try:
             print(f"   -> Playwright navigating to: {url}")
-            await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            await page.goto(url, timeout=45000, wait_until="domcontentloaded")
 
             # Try to handle cookie/consent pop-ups
             consent_selectors = [
@@ -230,14 +230,14 @@ async def _scrape_gnews(query: str) -> List[Dict]:
             ]
             for selector in consent_selectors:
                 try:
-                    await page.locator(selector).click(timeout=2000)
+                    await page.locator(selector).click(timeout=2500)
                     print("   -> Clicked consent button.")
-                    await page.wait_for_timeout(1500) # wait for page to settle
+                    await page.wait_for_timeout(2000) # wait for page to settle
                     break
                 except Exception:
                     pass
 
-            await page.wait_for_selector('div[role="heading"]', timeout=25000)
+            await page.wait_for_selector('div[role="heading"]', timeout=30000)
 
             # New strategy: Find headlines (more stable) and work back to the link
             headlines = await page.query_selector_all('div[role="heading"]')
@@ -751,12 +751,9 @@ def main():
     headlines_html = "\n".join([f"<li><a href=\"articles/{m['file']}\">{html.escape(m['title'])}</a></li>" for m in headlines_src])
 
     # ticker/trending
-    ticker_titles: List[str] = []
-    for interest, _w in load_interests_weighted():
-        for itm in google_news_rss(interest, limit=2):
-            ticker_titles.append(itm["title"])
-            if len(ticker_titles) >= TICKER_COUNT: break
-        if len(ticker_titles) >= TICKER_COUNT: break
+    # Use candidates already fetched instead of making new network requests
+    # This also fixes the NameError from the removed google_news_rss function
+    ticker_titles: List[str] = [c["title"] for c in all_candidates[:TICKER_COUNT]]
     ticker_text = " · ".join(ticker_titles) if ticker_titles else "Fresh updates every cycle."
 
     try:
