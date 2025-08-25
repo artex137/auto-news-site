@@ -219,7 +219,7 @@ async def _scrape_gnews(query: str) -> List[Dict]:
         items = []
         try:
             print(f"   -> Playwright navigating to: {url}")
-            await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            await page.goto(url, timeout=50000, wait_until="domcontentloaded")
 
             # Try to handle cookie/consent pop-ups
             consent_selectors = [
@@ -237,20 +237,21 @@ async def _scrape_gnews(query: str) -> List[Dict]:
                 except Exception:
                     pass
 
-            await page.wait_for_selector('div[role="heading"]', timeout=30000)
+            # New, more robust selector strategy: Find links that contain a heading.
+            # This is a much more stable pattern than relying on specific classes or roles.
+            await page.wait_for_selector("a:has(h3)", timeout=35000)
+            link_elements = await page.query_selector_all("a:has(h3)")
+            print(f"   -> Found {len(link_elements)} potential result links.")
 
-            # New strategy: Find headlines (more stable) and work back to the link
-            headlines = await page.query_selector_all('div[role="heading"]')
-
-            for h_el in headlines[:25]: # Limit to top 25 results
+            for link_el in link_elements[:30]: # Limit to top 30 results
                 try:
-                    title = await h_el.inner_text()
-                    if not title: continue
-
-                    # The headline is inside an 'a' tag. Find the ancestor link.
-                    link_el = await h_el.query_selector('xpath=ancestor::a')
-                    if not link_el: continue
-                    
+                    title_el = await link_el.query_selector("h3")
+                    if not title_el:
+                        continue
+                    title = await title_el.inner_text()
+                    if not title or len(title) < 10:
+                        continue
+                        
                     link = await link_el.get_attribute('href')
                     if not link: continue
 
