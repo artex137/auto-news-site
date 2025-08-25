@@ -262,7 +262,22 @@ async def _scrape_gnews(query: str) -> List[Dict]:
                     if not link or not (link.startswith('http://') or link.startswith('https://')):
                         continue
 
-                    items.append({"title": title, "link": link, "date": utcnow(), "description": ""})
+                    # Try to find and parse the publication date from the search result item
+                    date_text = ""
+                    try:
+                        # The date is usually in a sibling span of the link's parent
+                        parent = await link_el.query_selector("xpath=..")
+                        if parent:
+                            spans = await parent.query_selector_all("span")
+                            if spans and len(spans) > 0:
+                                # It's often the last span
+                                date_text = await spans[-1].inner_text()
+                    except Exception:
+                        pass # Ignore errors, we'll fall back
+                    
+                    pub_date = parse_relative_date(date_text) or utcnow()
+
+                    items.append({"title": title, "link": link, "date": pub_date, "description": ""})
                 except Exception:
                     continue
             print(f"   -> Found {len(items)} candidates via Playwright for '{query}'")
@@ -459,6 +474,23 @@ def is_story_outlet_duplicate(title: str, domain: str, manifest: List[Dict]) -> 
             if len(cand_sig) >= 5 and len(cand_sig & article_sig) >= len(cand_sig) - 1: return True
     return False
 
+def is_story_duplicate_in_manifest(title: str, manifest: List[Dict]) -> bool:
+    """
+    Checks if a story with a very similar title already exists anywhere in the manifest,
+    regardless of the source outlet. This is a stricter, cross-outlet check.
+    """
+    cand_sig = topic_signature(title)
+    cand_title_lower = title.lower()
+    # Check only the last N articles for performance
+    for article in manifest[:200]:
+        article_title = article.get("title", "")
+        if difflib.SequenceMatcher(None, cand_title_lower, article_title.lower()).ratio() >= 0.90:
+            return True
+        article_sig = topic_signature(article_title)
+        if jaccard(cand_sig, article_sig) >= 0.80:
+            return True
+    return False
+
 def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[str], List[Set[str]], Set[str], Dict[str,int]]:
     cut = utcnow() - timedelta(hours=window_hours)
     titles, sigs, domains, token_freq = [], [], set(), {}
@@ -472,6 +504,24 @@ def build_recent_memory(manifest: List[Dict], window_hours: int) -> Tuple[List[s
             if d.startswith("www."): d = d[4:]
             if d: domains.add(d)
     return titles, sigs, domains, token_freq
+
+def parse_relative_date(date_str: str) -> Optional[datetime]:
+    if not date_str: return None
+    date_str = date_str.lower().strip()
+    now = utcnow()
+    try:
+        if "yesterday" in date_str:
+            return now - timedelta(days=1)
+        if "hour" in date_str:
+            hours = int(re.search(r'(\d+)', date_str).group(1))
+            return now - timedelta(hours=hours)
+        if "day" in date_str:
+            days = int(re.search(r'(\d+)', date_str).group(1))
+            return now - timedelta(days=days)
+        dt = parsedate_to_datetime(date_str)
+        return as_utc(dt)
+    except Exception:
+        return None
 
 # ===== Writer (newsroom prompt kept) =====
 def openai_article(topic: str, source_title: str, source_urls: List[str], source_text: str) -> str:
@@ -585,7 +635,20 @@ def render_article_page(title: str, meta_description: str, hero_repo_rel: str, b
 
 def render_archive(manifest: List[Dict]):
     with open(ARCHIVE_TPL, "r", encoding="utf-8") as f: tpl = Template(f.read())
-    articles = [{"href": f"./{m['file']}", "title": m["title"], "image": m.get("image", FALLBACK), "date": m["date"]} for m in manifest]
+    articles = []
+    for m in manifest:
+        source_host = ""
+        try:
+            source_host = urlparse(m.get("source_url", "")).netloc.replace("www.", "")
+        except Exception:
+            pass
+        articles.append({
+            "href": f"./{m['file']}", 
+            "title": m["title"], 
+            "image": m.get("image", FALLBACK), 
+            "date": m["date"],
+            "source": source_host
+        })
     html_out = tpl.render(articles=articles)
     os.makedirs(ART_DIR, exist_ok=True)
     with open(os.path.join(ART_DIR, "index.html"), "w", encoding="utf-8") as f: f.write(html_out)
@@ -672,6 +735,11 @@ def main():
         # Check if this exact story from this outlet has already been covered
         if is_story_outlet_duplicate(cand["title"], domain, manifest):
             print(f"  [skip] Duplicate story from outlet '{domain}': {cand['title'][:60]}...")
+            continue
+        
+        # New stricter check: is this story a duplicate of ANY recent story?
+        if is_story_duplicate_in_manifest(cand["title"], manifest):
+            print(f"  [skip] Duplicate story found in manifest: {cand['title'][:60]}...")
             continue
 
         if is_advertorial(cand["title"], cand["link"]):

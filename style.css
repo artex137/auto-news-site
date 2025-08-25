@@ -93,6 +93,24 @@ body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,s
   .archive-cards .card-title{font-size:16px}
   .archive-cards .card-body{padding:10px 12px}
 }
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+.card-source {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #cddcff; /* A lighter blue, good on dark backgrounds */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.card-date {
+  font-size: 0.8rem;
+  color: #fff; /* White color for the date */
+  opacity: 0.8;
+}
 
 /* Article pages */
 .hero{height:38vh;max-height:520px;background:#0d1a2e;background-size:cover;background-position:center;border-bottom:1px solid var(--line)}

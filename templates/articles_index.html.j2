@@ -44,7 +44,10 @@
               <div class="card-media" style="background-image:url('../{{ a.image }}')"></div>
               <div class="card-body">
                 <h4 class="card-title">{{ a.title }}</h4>
-                <div class="card-meta">{{ a.date }}</div>
+                <div class='card-meta'>
+                  <span class="card-source">{{ a.source }}</span>
+                  <span class="card-date">{{ a.date }}</span>
+                </div>
               </div>
             </a>
           {% endfor %}
